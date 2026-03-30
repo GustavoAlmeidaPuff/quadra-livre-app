@@ -17,6 +17,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { getUserStats, UserStats } from '@/lib/stats';
 import { User } from '@/types';
+import PhotoViewer from '@/components/PhotoViewer';
 
 function getInitials(firstName?: string, lastName?: string): string {
   return `${(firstName || 'U')[0]}${(lastName || '')[0] || ''}`.toUpperCase();
@@ -33,6 +34,7 @@ export default function PerfilScreen() {
   const [profileUser, setProfileUser] = useState<User | null>(isOwnProfile ? appUser : null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [photoVisible, setPhotoVisible] = useState(false);
 
   useEffect(() => {
     if (!viewedUserId) return;
@@ -85,13 +87,23 @@ export default function PerfilScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Avatar & Name */}
       <View style={styles.profileHeader}>
-        {profileUser?.pictureUrl ? (
-          <Image source={{ uri: profileUser.pictureUrl }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
-        )}
+        <TouchableOpacity
+          onPress={() => profileUser?.pictureUrl && setPhotoVisible(true)}
+          activeOpacity={profileUser?.pictureUrl ? 0.8 : 1}
+        >
+          {profileUser?.pictureUrl ? (
+            <View>
+              <Image source={{ uri: profileUser.pictureUrl }} style={styles.avatar} />
+              <View style={styles.avatarZoomHint}>
+                <Ionicons name="expand-outline" size={14} color="#ffffff" />
+              </View>
+            </View>
+          ) : (
+            <View style={[styles.avatar, styles.avatarFallback]}>
+              <Text style={styles.avatarText}>{initials}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
         <Text style={styles.name}>{fullName || 'Usuário'}</Text>
         {isOwnProfile && (
           <Text style={styles.email}>
@@ -99,6 +111,12 @@ export default function PerfilScreen() {
           </Text>
         )}
       </View>
+
+      <PhotoViewer
+        uri={profileUser?.pictureUrl}
+        visible={photoVisible}
+        onClose={() => setPhotoVisible(false)}
+      />
 
       {/* Stats */}
       {stats && (
@@ -223,6 +241,14 @@ const styles = StyleSheet.create({
   avatar: { width: 80, height: 80, borderRadius: 40 },
   avatarFallback: { backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'center' },
   avatarText: { color: '#ffffff', fontWeight: '800', fontSize: 28 },
+  avatarZoomHint: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 10,
+    padding: 3,
+  },
   name: { fontSize: 22, fontWeight: '800', color: '#111827' },
   email: { fontSize: 14, color: '#6b7280' },
 
