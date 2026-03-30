@@ -7,121 +7,24 @@ import {
   ActivityIndicator,
   StyleSheet,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'expo-router';
-import { Reservation } from '@/types';
-
-const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-
-interface NextReservation {
-  id: string;
-  dateLabel: string;
-  time: string;
-}
-
-interface Stats {
-  totalHours: number;
-  totalReservations: number;
-  weekStreak: number;
-  dayStats: { day: string; count: number }[];
-  nextReservation: NextReservation | null;
-}
-
-function formatTime(d: Date) {
-  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-async function loadStats(userId: string): Promise<Stats> {
-  const now = new Date();
-  const q = query(
-    collection(db, 'reservations'),
-    where('createdById', '==', userId)
-  );
-  const snap = await getDocs(q);
-  const reservations = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Reservation));
-
-  const past = reservations.filter((r) => r.endAt.toDate() < now);
-  const upcoming = reservations
-    .filter((r) => r.startAt.toDate() >= now)
-    .sort((a, b) => a.startAt.toMillis() - b.startAt.toMillis());
-
-  const totalHours = Math.round(
-    past.reduce((acc, r) => {
-      const mins = (r.endAt.toMillis() - r.startAt.toMillis()) / 60000;
-      return acc + mins;
-    }, 0) / 60
-  );
-
-  const dayStats = DAY_NAMES.map((day, i) => ({
-    day,
-    count: past.filter((r) => r.startAt.toDate().getDay() === i).length,
-  }));
-
-  const weekStart = (d: Date) => {
-    const s = new Date(d);
-    s.setDate(d.getDate() - d.getDay());
-    s.setHours(0, 0, 0, 0);
-    return s.getTime();
-  };
-  const pastWeeks = new Set(past.map((r) => weekStart(r.startAt.toDate())));
-  let weekStreak = 0;
-  const checkDate = new Date();
-  checkDate.setDate(checkDate.getDate() - checkDate.getDay());
-  checkDate.setHours(0, 0, 0, 0);
-  while (pastWeeks.has(checkDate.getTime())) {
-    weekStreak++;
-    checkDate.setDate(checkDate.getDate() - 7);
-  }
-
-  let nextReservation: NextReservation | null = null;
-  if (upcoming.length > 0) {
-    const next = upcoming[0];
-    const start = next.startAt.toDate();
-    const end = next.endAt.toDate();
-    const today = new Date();
-    const isToday = start.toDateString() === today.toDateString();
-    const isTomorrow =
-      start.toDateString() ===
-      new Date(today.getTime() + 86400000).toDateString();
-    const dateLabel = isToday
-      ? 'Hoje'
-      : isTomorrow
-      ? 'Amanhã'
-      : start.toLocaleDateString('pt-BR', {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'short',
-        });
-    nextReservation = {
-      id: next.id,
-      dateLabel,
-      time: `${formatTime(start)} – ${formatTime(end)}`,
-    };
-  }
-
-  return { totalHours, totalReservations: past.length, weekStreak, dayStats, nextReservation };
-}
+import { getUserStats, UserStats } from '@/lib/stats';
 
 export default function HomeScreen() {
   const { appUser, firebaseUser } = useAuth();
   const router = useRouter();
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!firebaseUser) return;
     try {
-      const s = await loadStats(firebaseUser.uid);
+      const s = await getUserStats(firebaseUser.uid);
       setStats(s);
     } catch (e) {
       console.error(e);
@@ -132,7 +35,6 @@ export default function HomeScreen() {
   }, [firebaseUser]);
 
   useEffect(() => { load(); }, [load]);
-
   const onRefresh = () => { setRefreshing(true); load(); };
 
   const maxCount = Math.max(...(stats?.dayStats.map((d) => d.count) ?? [0]), 1);
@@ -145,6 +47,7 @@ export default function HomeScreen() {
     );
   }
 
+  // Lowercase date matching web (pt-BR locale already handles this)
   const today = new Date().toLocaleDateString('pt-BR', {
     weekday: 'long',
     day: 'numeric',
@@ -155,15 +58,15 @@ export default function HomeScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />
-      }
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
     >
-      <View style={styles.greeting}>
+      {/* Greeting */}
+      <View>
         <Text style={styles.greetingText}>Olá, {appUser?.firstName ?? ''}! 👋</Text>
         <Text style={styles.dateText}>{today}</Text>
       </View>
 
+      {/* Next Reservation */}
       {stats?.nextReservation && (
         <View style={styles.nextCard}>
           <View style={styles.nextCardHeader}>
@@ -172,9 +75,15 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.nextCardDate}>{stats.nextReservation.dateLabel}</Text>
           <Text style={styles.nextCardTime}>{stats.nextReservation.time}</Text>
+          {stats.nextReservation.participants.length > 0 && (
+            <Text style={styles.nextCardParticipants} numberOfLines={1}>
+              {stats.nextReservation.participants.join(', ')}
+            </Text>
+          )}
         </View>
       )}
 
+      {/* Stats Grid */}
       <View style={styles.statsGrid}>
         <View style={styles.statCard}>
           <Ionicons name="time-outline" size={22} color="#10b981" />
@@ -189,12 +98,16 @@ export default function HomeScreen() {
         <View style={styles.statCard}>
           <Ionicons name="trending-up-outline" size={22} color="#10b981" />
           <Text style={styles.statNumber}>{stats?.weekStreak ?? 0}</Text>
-          <Text style={styles.statLabel}>Semanas</Text>
+          <Text style={styles.statLabel}>Semanas{'\n'}consecutivas</Text>
         </View>
       </View>
 
-      <View style={styles.chartCard}>
-        <Text style={styles.cardTitle}>Frequência por dia</Text>
+      {/* Frequency by day */}
+      <View style={styles.card}>
+        <View style={styles.cardTitleRow}>
+          <Ionicons name="trending-up-outline" size={18} color="#10b981" />
+          <Text style={styles.cardTitle}>Frequência por dia</Text>
+        </View>
         <View style={styles.chart}>
           {(stats?.dayStats ?? []).map((stat) => (
             <View key={stat.day} style={styles.chartBar}>
@@ -204,7 +117,7 @@ export default function HomeScreen() {
                     styles.bar,
                     {
                       height: stat.count > 0
-                        ? Math.max(Math.round((stat.count / maxCount) * 100), 6)
+                        ? Math.max(Math.round((stat.count / maxCount) * 120), 6)
                         : 0,
                     },
                   ]}
@@ -217,6 +130,41 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* Top Partners */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Parceiros mais frequentes</Text>
+        {(stats?.topPartners?.length ?? 0) > 0 ? (
+          <View style={styles.partnersList}>
+            {stats!.topPartners.map((p) => (
+              <TouchableOpacity
+                key={p.userId}
+                style={styles.partnerRow}
+                onPress={() => router.push(`/perfil?userId=${p.userId}`)}
+              >
+                <View style={styles.partnerLeft}>
+                  {p.pictureUrl ? (
+                    <Image source={{ uri: p.pictureUrl }} style={styles.partnerAvatar} />
+                  ) : (
+                    <View style={[styles.partnerAvatar, styles.partnerAvatarFallback]}>
+                      <Text style={styles.partnerInitials}>{p.initials}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.partnerName}>{p.name}</Text>
+                </View>
+                <Text style={styles.partnerCount}>
+                  {p.count} {p.count === 1 ? 'jogo' : 'jogos'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.emptyText}>
+            Nenhum parceiro ainda. Faça reservas para aparecer aqui.
+          </Text>
+        )}
+      </View>
+
+      {/* CTA when no upcoming reservation */}
       {!stats?.nextReservation && (
         <TouchableOpacity
           style={styles.ctaButton}
@@ -234,13 +182,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f9fafb' },
   content: { padding: 16, paddingBottom: 32, gap: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  greeting: { marginBottom: 4 },
+
   greetingText: { fontSize: 24, fontWeight: '800', color: '#111827' },
-  dateText: { fontSize: 13, color: '#6b7280', marginTop: 2, textTransform: 'capitalize' },
+  dateText: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+
   nextCard: {
     backgroundColor: '#ecfdf5',
     borderRadius: 16,
-    padding: 16,
+    padding: 20,
     borderWidth: 1,
     borderColor: '#a7f3d0',
   },
@@ -252,7 +201,9 @@ const styles = StyleSheet.create({
   },
   nextCardLabel: { fontSize: 11, fontWeight: '700', color: '#065f46', letterSpacing: 0.5 },
   nextCardDate: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 2 },
-  nextCardTime: { fontSize: 14, color: '#374151' },
+  nextCardTime: { fontSize: 14, color: '#374151', marginBottom: 4 },
+  nextCardParticipants: { fontSize: 12, color: '#059669' },
+
   statsGrid: { flexDirection: 'row', gap: 10 },
   statCard: {
     flex: 1,
@@ -265,21 +216,44 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
   },
   statNumber: { fontSize: 22, fontWeight: '800', color: '#111827' },
-  statLabel: { fontSize: 11, color: '#6b7280', textAlign: 'center' },
-  chartCard: {
+  statLabel: { fontSize: 11, color: '#6b7280', textAlign: 'center', lineHeight: 15 },
+
+  card: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 16,
+    padding: 20,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    gap: 16,
   },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 16 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+
   chart: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   chartBar: { flex: 1, alignItems: 'center', gap: 4 },
-  barContainer: { height: 100, justifyContent: 'flex-end', width: '80%' },
-  bar: { width: '100%', backgroundColor: '#10b981', borderRadius: 4 },
+  barContainer: { height: 120, justifyContent: 'flex-end', width: '80%' },
+  bar: { width: '100%', backgroundColor: '#10b981', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
   barLabel: { fontSize: 11, color: '#6b7280', fontWeight: '500' },
   barCount: { fontSize: 11, color: '#9ca3af' },
+
+  partnersList: { gap: 10 },
+  partnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+  },
+  partnerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  partnerAvatar: { width: 32, height: 32, borderRadius: 16 },
+  partnerAvatarFallback: { backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'center' },
+  partnerInitials: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
+  partnerName: { fontSize: 14, fontWeight: '500', color: '#111827' },
+  partnerCount: { fontSize: 12, color: '#6b7280' },
+
+  emptyText: { fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 8 },
+
   ctaButton: {
     backgroundColor: '#10b981',
     borderRadius: 14,
