@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import PostContent from '@/components/PostContent';
+import PhotoViewer from '@/components/PhotoViewer';
 import {
   collection,
   query,
@@ -135,6 +136,7 @@ function FeedTab({ currentUserId }: { currentUserId: string }) {
   const [refreshing, setRefreshing] = useState(false);
   const [newPost, setNewPost] = useState('');
   const [publishing, setPublishing] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -258,7 +260,9 @@ function FeedTab({ currentUserId }: { currentUserId: string }) {
               <PostContent content={post.content} style={feedStyles.postContent} />
 
               {post.imageUrl && (
-                <Image source={{ uri: post.imageUrl }} style={feedStyles.postImage} resizeMode="cover" />
+                <TouchableOpacity onPress={() => setSelectedPhoto(post.imageUrl!)} activeOpacity={0.92}>
+                  <Image source={{ uri: post.imageUrl }} style={feedStyles.postImage} resizeMode="cover" />
+                </TouchableOpacity>
               )}
 
               <View style={feedStyles.postActions}>
@@ -285,6 +289,12 @@ function FeedTab({ currentUserId }: { currentUserId: string }) {
           ))
         )}
       </ScrollView>
+
+      <PhotoViewer
+        uri={selectedPhoto}
+        visible={!!selectedPhoto}
+        onClose={() => setSelectedPhoto(null)}
+      />
     </KeyboardAvoidingView>
   );
 }
