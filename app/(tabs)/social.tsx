@@ -14,6 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import PostContent from '@/components/PostContent';
 import {
   collection,
   query,
@@ -254,7 +255,7 @@ function FeedTab({ currentUserId }: { currentUserId: string }) {
                 )}
               </View>
 
-              <Text style={feedStyles.postContent}>{post.content}</Text>
+              <PostContent content={post.content} style={feedStyles.postContent} />
 
               {post.imageUrl && (
                 <Image source={{ uri: post.imageUrl }} style={feedStyles.postImage} resizeMode="cover" />
