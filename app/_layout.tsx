@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { ToastProvider } from '@/components/Toast';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -64,6 +65,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
+      <ToastProvider>
       <AuthGuard>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -73,6 +75,7 @@ export default function RootLayout() {
           <Stack.Screen name="+not-found" />
         </Stack>
       </AuthGuard>
+      </ToastProvider>
     </AuthProvider>
   );
 }
