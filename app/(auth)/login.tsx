@@ -81,11 +81,17 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const [, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  });
+  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+  const googleEnabled = Platform.OS !== 'android' || !!androidClientId;
+
+  const [, googleResponse, promptGoogleAsync] = Google.useAuthRequest(
+    {
+      androidClientId: androidClientId || undefined,
+      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    },
+    { useProxy: true }
+  );
 
   // Handle Google response
   React.useEffect(() => {
@@ -161,21 +167,25 @@ export default function LoginScreen() {
         {/* Card */}
         <View style={styles.card}>
           {/* Google */}
-          <TouchableOpacity
-            style={styles.googleButton}
-            onPress={() => promptGoogleAsync()}
-            disabled={loading}
-          >
-            <Text style={styles.googleIcon}>G</Text>
-            <Text style={styles.googleButtonText}>Entrar com Google</Text>
-          </TouchableOpacity>
+          {googleEnabled && (
+            <TouchableOpacity
+              style={styles.googleButton}
+              onPress={() => promptGoogleAsync()}
+              disabled={loading}
+            >
+              <Text style={styles.googleIcon}>G</Text>
+              <Text style={styles.googleButtonText}>Entrar com Google</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>ou</Text>
-            <View style={styles.dividerLine} />
-          </View>
+          {googleEnabled && (
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>ou</Text>
+              <View style={styles.dividerLine} />
+            </View>
+          )}
 
           {/* Email/Senha */}
           <Text style={styles.sectionLabel}>Email e senha</Text>
