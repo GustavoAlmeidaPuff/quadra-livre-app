@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   Image,
   Modal,
   Pressable,
+  Animated,
+  Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -54,11 +56,31 @@ async function fetchParticipantNames(reservationId: string): Promise<string[]> {
 }
 
 function CourtStatusDot({ isOccupied }: { isOccupied: boolean }) {
+  const spin = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 3000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    animation.start();
+    return () => animation.stop();
+  }, []);
+
+  const rotate = spin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
   return (
-    <View
+    <Animated.View
       style={[
         styles.statusDot,
-        { backgroundColor: isOccupied ? '#ef4444' : '#10b981' },
+        { backgroundColor: isOccupied ? '#ef4444' : '#10b981', transform: [{ rotate }] },
       ]}
     />
   );
@@ -122,23 +144,32 @@ function CourtsStatusCenter({ courtIds }: { courtIds: string[] }) {
   if (courts.length === 0) return null;
 
   const freeCourts = courts.filter((c) => !c.isOccupied);
-  const showSummary = freeCourts.length > 1;
+  const occupiedCourts = courts.filter((c) => c.isOccupied);
+  const allFree = occupiedCourts.length === 0;
+  const allOccupied = freeCourts.length === 0;
+  const mixed = !allFree && !allOccupied;
 
-  const summary = showSummary
-    ? `${freeCourts.length} quadras livres`
-    : courts[0]
-    ? courts[0].isOccupied
-      ? `${courts[0].name} ocupada`
-      : `${courts[0].name} livre`
-    : '';
+  let summary: string;
+  let subtext: string;
+  let occupied: boolean;
 
-  const subtext = showSummary
-    ? 'Reserve agora!'
-    : courts[0]?.isOccupied
-    ? courts[0].participantNames.slice(0, 2).join(', ') || 'Reserve agora!'
-    : 'Reserve agora!';
-
-  const occupied = courts.some((c) => c.isOccupied) && !showSummary && courts[0]?.isOccupied;
+  if (allFree) {
+    summary = courts.length === 1 ? `${courts[0].name} livre` : `${courts.length} quadras livres`;
+    subtext = 'Reserve agora!';
+    occupied = false;
+  } else if (allOccupied) {
+    summary = courts.length === 1 ? `${courts[0].name} ocupada` : `${courts.length} quadras ocupadas`;
+    subtext = courts.length === 1
+      ? (courts[0].participantNames.slice(0, 2).join(', ') || 'Todas ocupadas')
+      : 'Todas ocupadas';
+    occupied = true;
+  } else {
+    const freeLabel = freeCourts.length === 1 ? '1 livre' : `${freeCourts.length} livres`;
+    const occLabel = occupiedCourts.length === 1 ? '1 ocupada' : `${occupiedCourts.length} ocupadas`;
+    summary = `${freeLabel} · ${occLabel}`;
+    subtext = 'Ver detalhes';
+    occupied = false;
+  }
 
   return (
     <>
@@ -174,7 +205,9 @@ function CourtsStatusCenter({ courtIds }: { courtIds: string[] }) {
                   </Text>
                   <Text style={styles.courtRowSub} numberOfLines={1}>
                     {c.isOccupied
-                      ? (c.participantNames.slice(0, 2).join(', ') || '')
+                      ? (c.participantNames.length > 2
+                        ? `${c.participantNames[0]}, ${c.participantNames[1]} e +${c.participantNames.length - 2}`
+                        : c.participantNames.join(', ') || '')
                       : 'Reserve agora!'}
                   </Text>
                 </View>

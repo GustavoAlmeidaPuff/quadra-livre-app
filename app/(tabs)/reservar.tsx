@@ -25,6 +25,9 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { Reservation } from '@/types';
 import { useRouter } from 'expo-router';
+import { useToast } from '@/components/Toast';
+import ErrorState from '@/components/ErrorState';
+import { getFriendlyError, FriendlyError } from '@/lib/errors';
 
 function formatDate(d: Date) {
   const today = new Date();
@@ -49,14 +52,17 @@ interface ReservationItem {
 
 export default function ReservarScreen() {
   const { firebaseUser } = useAuth();
+  const { showError } = useToast();
   const [reservations, setReservations] = useState<ReservationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
+  const [error, setError] = useState<FriendlyError | null>(null);
 
   const load = useCallback(async () => {
     if (!firebaseUser) return;
     try {
+      setError(null);
       const q = query(
         collection(db, 'reservations'),
         where('createdById', '==', firebaseUser.uid)
@@ -84,6 +90,12 @@ export default function ReservarScreen() {
       setReservations(items);
     } catch (e) {
       console.error(e);
+      const friendly = getFriendlyError(e);
+      if (reservations.length === 0) {
+        setError(friendly);
+      } else {
+        showError(e);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -123,6 +135,8 @@ export default function ReservarScreen() {
         <View style={styles.center}>
           <ActivityIndicator color="#10b981" size="large" />
         </View>
+      ) : error ? (
+        <ErrorState error={error} onRetry={load} fullPage />
       ) : (
         <ScrollView
           contentContainerStyle={styles.list}

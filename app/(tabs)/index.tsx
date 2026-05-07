@@ -13,21 +13,33 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'expo-router';
 import { getUserStats, UserStats } from '@/lib/stats';
+import { useToast } from '@/components/Toast';
+import ErrorState from '@/components/ErrorState';
+import { getFriendlyError, FriendlyError } from '@/lib/errors';
 
 export default function HomeScreen() {
   const { appUser, firebaseUser } = useAuth();
   const router = useRouter();
+  const { showError } = useToast();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<FriendlyError | null>(null);
 
   const load = useCallback(async () => {
     if (!firebaseUser) return;
     try {
+      setError(null);
       const s = await getUserStats(firebaseUser.uid);
       setStats(s);
     } catch (e) {
       console.error(e);
+      const friendly = getFriendlyError(e);
+      if (!stats) {
+        setError(friendly);
+      } else {
+        showError(e);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -45,6 +57,10 @@ export default function HomeScreen() {
         <ActivityIndicator size="large" color="#10b981" />
       </View>
     );
+  }
+
+  if (error) {
+    return <ErrorState error={error} onRetry={load} fullPage />;
   }
 
   // Lowercase date matching web (pt-BR locale already handles this)

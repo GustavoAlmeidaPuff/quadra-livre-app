@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import PostContent from '@/components/PostContent';
 import PhotoViewer from '@/components/PhotoViewer';
+import { useToast } from '@/components/Toast';
 import {
   collection,
   query,
@@ -137,6 +138,7 @@ function FeedTab({ currentUserId }: { currentUserId: string }) {
   const [newPost, setNewPost] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -163,7 +165,7 @@ function FeedTab({ currentUserId }: { currentUserId: string }) {
       });
       setNewPost('');
       await load();
-    } catch (e) { Alert.alert('Erro', 'Não foi possível publicar.'); }
+    } catch (e) { showError(e, 'Erro ao publicar'); }
     finally { setPublishing(false); }
   };
 
