@@ -17,6 +17,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import Avatar from '@/components/Avatar';
+import WheelTimePicker from '@/components/WheelTimePicker';
 import { COURTS } from '@/lib/courts';
 import { getSuggestedPartners, PartnerStat } from '@/lib/stats';
 import { createReservation, getCourtRules, computeEndAt } from '@/lib/reservations';
@@ -214,38 +215,18 @@ export default function NovaReservaScreen() {
         {/* Horário */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>HORÁRIO</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowScroll}>
-            {HOURS.map((h) => {
-              const active = h === hour;
-              return (
-                <TouchableOpacity
-                  key={h}
-                  style={[styles.chip, active && styles.chipActive]}
-                  onPress={() => setHour(h)}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {String(h).padStart(2, '0')}h
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-          <View style={[styles.rowWrap, { marginTop: 8 }]}>
-            {MINUTES.map((m) => {
-              const active = m === minute;
-              return (
-                <TouchableOpacity
-                  key={m}
-                  style={[styles.chipSm, active && styles.chipActive]}
-                  onPress={() => setMinute(m)}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>:{m}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <WheelTimePicker
+            hours={HOURS}
+            minutes={MINUTES}
+            hour={hour}
+            minute={minute}
+            onChange={(h, m) => {
+              setHour(h);
+              setMinute(m);
+            }}
+          />
           <Text style={styles.endHint}>
-            {fmtTime(startDate)} – {fmtTime(endDate)}
+            Termina às {fmtTime(endDate)} · {fmtTime(startDate)} – {fmtTime(endDate)}
           </Text>
         </View>
 
@@ -358,14 +339,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  chipSm: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#e5e7eb',

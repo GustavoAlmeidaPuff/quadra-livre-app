@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,61 +18,71 @@ import {
   getDocs,
   doc,
   getDoc,
-  deleteDoc,
   writeBatch,
+  Timestamp,
+  orderBy,
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { Reservation, ReservationParticipant } from '@/types';
 import { useToast } from '@/components/Toast';
 import ErrorState from '@/components/ErrorState';
 import { getFriendlyError, FriendlyError } from '@/lib/errors';
+import { COURTS, normalizeCourtId } from '@/lib/courts';
 
-function formatDate(d: Date) {
-  const today = new Date();
-  const tomorrow = new Date(today.getTime() + 86400000);
-  if (d.toDateString() === today.toDateString()) return 'Hoje';
-  if (d.toDateString() === tomorrow.toDateString()) return 'Amanhã';
-  return d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' });
-}
+const ROW_HEIGHT = 60; // px por hora
+const LABEL_WIDTH = 52;
 
 function formatTime(d: Date) {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-interface ReservationItem {
+function dateKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function dayLabel(d: Date): string {
+  const today = new Date();
+  const tomorrow = new Date(today.getTime() + 86400000);
+  if (d.toDateString() === today.toDateString()) return 'Hoje';
+  if (d.toDateString() === tomorrow.toDateString()) return 'Amanhã';
+  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'short' });
+}
+
+interface RawReservation {
   id: string;
   start: Date;
   end: Date;
-  dateLabel: string;
-  timeLabel: string;
+  createdById: string;
+  courtId: string;
+}
+
+interface AgendaReservation extends RawReservation {
+  participantNames: string[];
+  participantIds: string[];
+  isMine: boolean;
   isPast: boolean;
   isCreator: boolean;
-  participants: string[];
-  participantCount: number;
 }
 
 function ReservationDetailModal({
   item,
-  visible,
   onClose,
   onCancel,
   onLeave,
   busy,
 }: {
-  item: ReservationItem | null;
-  visible: boolean;
+  item: AgendaReservation | null;
   onClose: () => void;
   onCancel: (id: string) => void;
   onLeave: (id: string) => void;
   busy: boolean;
 }) {
   if (!item) return null;
-  const hasMultiple = item.participantCount > 1;
+  const hasMultiple = item.participantIds.length > 1;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={!!item} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modal}>
           <View style={styles.modalHeader}>
@@ -84,31 +94,31 @@ function ReservationDetailModal({
 
           <View style={styles.modalRow}>
             <Ionicons name="calendar-outline" size={16} color="#10b981" />
-            <Text style={styles.modalText}>{item.dateLabel}</Text>
+            <Text style={styles.modalText}>{dayLabel(item.start)}</Text>
           </View>
           <View style={styles.modalRow}>
             <Ionicons name="time-outline" size={16} color="#10b981" />
-            <Text style={styles.modalText}>{item.timeLabel}</Text>
+            <Text style={styles.modalText}>
+              {formatTime(item.start)} – {formatTime(item.end)}
+            </Text>
           </View>
-          {item.participants.length > 0 && (
+          {item.participantNames.length > 0 && (
             <View style={styles.modalRow}>
               <Ionicons name="people-outline" size={16} color="#10b981" />
-              <Text style={styles.modalText}>{item.participants.join(', ')}</Text>
+              <Text style={styles.modalText}>{item.participantNames.join(', ')}</Text>
             </View>
           )}
 
-          {!item.isPast && (
+          {!item.isPast && (item.isMine || item.isCreator) && (
             <View style={styles.modalActions}>
-              {hasMultiple && !item.isCreator && (
+              {hasMultiple && !item.isCreator && item.isMine && (
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.leaveBtn, busy && styles.disabledBtn]}
                   onPress={() => onLeave(item.id)}
                   disabled={busy}
                 >
                   <Ionicons name="log-out-outline" size={18} color="#fff" />
-                  <Text style={styles.actionBtnText}>
-                    {busy ? 'Aguarde...' : 'Sair da reserva'}
-                  </Text>
+                  <Text style={styles.actionBtnText}>{busy ? 'Aguarde...' : 'Sair da reserva'}</Text>
                 </TouchableOpacity>
               )}
               {item.isCreator && (
@@ -118,9 +128,7 @@ function ReservationDetailModal({
                   disabled={busy}
                 >
                   <Ionicons name="trash-outline" size={18} color="#fff" />
-                  <Text style={styles.actionBtnText}>
-                    {busy ? 'Aguarde...' : 'Cancelar reserva'}
-                  </Text>
+                  <Text style={styles.actionBtnText}>{busy ? 'Aguarde...' : 'Cancelar reserva'}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -132,277 +140,379 @@ function ReservationDetailModal({
 }
 
 export default function ReservarScreen() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, appUser } = useAuth();
   const { showError } = useToast();
   const router = useRouter();
-  const [reservations, setReservations] = useState<ReservationItem[]>([]);
+
+  const availableCourts = useMemo(
+    () => COURTS.filter((c) => !appUser?.courtIds?.length || appUser.courtIds.includes(c.id)),
+    [appUser?.courtIds]
+  );
+  const [selectedCourt, setSelectedCourt] = useState<string>('quadra_1');
+  const [courtPickerOpen, setCourtPickerOpen] = useState(false);
+
+  const days = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      return d;
+    });
+  }, []);
+  const [selectedDate, setSelectedDate] = useState(() => days[0]);
+
+  const [windowReservations, setWindowReservations] = useState<RawReservation[]>([]);
+  const [dayReservations, setDayReservations] = useState<AgendaReservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
   const [error, setError] = useState<FriendlyError | null>(null);
-  const [selected, setSelected] = useState<ReservationItem | null>(null);
+  const [selected, setSelected] = useState<AgendaReservation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => new Date());
 
-  const load = useCallback(async () => {
+  const scrollRef = useRef<ScrollView>(null);
+  const didScrollToNow = useRef(false);
+
+  // Ajusta a quadra selecionada às quadras do usuário.
+  useEffect(() => {
+    if (availableCourts.length && !availableCourts.some((c) => c.id === selectedCourt)) {
+      setSelectedCourt(availableCourts[0].id);
+    }
+  }, [availableCourts, selectedCourt]);
+
+  // Relógio para a linha vermelha (atualiza a cada minuto).
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Carrega reservas de toda a janela de 7 dias (todas as quadras).
+  const loadWindow = useCallback(async () => {
     if (!firebaseUser) return;
     try {
       setError(null);
+      const first = new Date(days[0]);
+      first.setDate(first.getDate() - 1);
+      first.setHours(0, 0, 0, 0);
+      const last = new Date(days[days.length - 1]);
+      last.setHours(23, 59, 59, 999);
 
-      // Fetch all reservations where the user is a participant
-      const participantsSnap = await getDocs(
+      const snap = await getDocs(
         query(
-          collection(db, 'reservationParticipants'),
-          where('userId', '==', firebaseUser.uid)
+          collection(db, 'reservations'),
+          where('startAt', '>=', Timestamp.fromDate(first)),
+          where('startAt', '<=', Timestamp.fromDate(last)),
+          orderBy('startAt', 'asc')
         )
       );
-
-      const reservationIds = [...new Set(participantsSnap.docs.map((d) => d.data().reservationId as string))];
-
-      if (reservationIds.length === 0) {
-        setReservations([]);
-        return;
-      }
-
-      // Fetch reservation docs and participant names in parallel
-      const reservationDocs = await Promise.all(
-        reservationIds.map((id) => getDoc(doc(db, 'reservations', id)))
-      );
-
-      const now = new Date();
-      const items: ReservationItem[] = [];
-
-      for (const resDoc of reservationDocs) {
-        if (!resDoc.exists()) continue;
-        const data = resDoc.data() as Reservation;
-        const start = data.startAt.toDate();
-        const end = data.endAt.toDate();
-
-        // Fetch participants for this reservation to get their names
-        const partSnap = await getDocs(
-          query(
-            collection(db, 'reservationParticipants'),
-            where('reservationId', '==', resDoc.id)
-          )
-        );
-
-        const participantNames: string[] = [];
-        for (const p of partSnap.docs) {
-          const pData = p.data() as ReservationParticipant;
-          if (pData.guestName) {
-            participantNames.push(pData.guestName);
-          } else if (pData.userId && pData.userId !== firebaseUser.uid) {
-            // We could fetch the user name here but keep it simple
-            participantNames.push('Participante');
-          }
-        }
-
-        items.push({
-          id: resDoc.id,
-          start,
-          end,
-          dateLabel: formatDate(start),
-          timeLabel: `${formatTime(start)} – ${formatTime(end)}`,
-          isPast: end < now,
-          isCreator: data.createdById === firebaseUser.uid,
-          participants: participantNames,
-          participantCount: partSnap.size,
-        });
-      }
-
-      items.sort((a, b) => {
-        if (tab === 'upcoming') return a.start.getTime() - b.start.getTime();
-        return b.start.getTime() - a.start.getTime();
+      const raw: RawReservation[] = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          start: data.startAt?.toDate?.() ?? new Date(),
+          end: data.endAt?.toDate?.() ?? new Date(),
+          createdById: data.createdById ?? '',
+          courtId: normalizeCourtId(data.courtId),
+        };
       });
-
-      setReservations(items);
+      setWindowReservations(raw);
     } catch (e) {
       console.error(e);
       const friendly = getFriendlyError(e);
-      if (reservations.length === 0) {
-        setError(friendly);
-      } else {
-        showError(e);
-      }
+      if (windowReservations.length === 0) setError(friendly);
+      else showError(e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [firebaseUser, tab]);
+  }, [firebaseUser, days]);
 
-  useEffect(() => { setLoading(true); load(); }, [load]);
-  const onRefresh = () => { setRefreshing(true); load(); };
+  useEffect(() => { setLoading(true); loadWindow(); }, [loadWindow]);
+  const onRefresh = () => { setRefreshing(true); loadWindow(); };
 
-  const handleLeave = async (reservationId: string) => {
+  // Dias (por quadra) que têm reservas — para o pontinho no seletor.
+  const daysWithReservations = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of windowReservations) {
+      if (r.courtId !== selectedCourt) continue;
+      for (const day of days) {
+        const ds = new Date(day); ds.setHours(0, 0, 0, 0);
+        const de = new Date(day); de.setHours(23, 59, 59, 999);
+        if (r.end.getTime() > ds.getTime() && r.start.getTime() <= de.getTime()) {
+          set.add(dateKey(day));
+        }
+      }
+    }
+    return set;
+  }, [windowReservations, selectedCourt, days]);
+
+  // Reservas do dia/quadra selecionados, com nomes dos participantes.
+  useEffect(() => {
     if (!firebaseUser) return;
-    Alert.alert(
-      'Sair da reserva',
-      'Tem certeza que deseja sair desta reserva?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              const partSnap = await getDocs(
-                query(
-                  collection(db, 'reservationParticipants'),
-                  where('reservationId', '==', reservationId),
-                  where('userId', '==', firebaseUser.uid)
-                )
-              );
-              if (partSnap.empty) return;
+    let cancelled = false;
 
-              const allPartSnap = await getDocs(
-                query(
-                  collection(db, 'reservationParticipants'),
-                  where('reservationId', '==', reservationId)
-                )
-              );
-
-              const batch = writeBatch(db);
-              batch.delete(partSnap.docs[0].ref);
-              if (allPartSnap.size === 1) {
-                batch.delete(doc(db, 'reservations', reservationId));
-              }
-              await batch.commit();
-
-              setSelected(null);
-              setReservations((prev) => prev.filter((r) => r.id !== reservationId));
-            } catch (e) {
-              console.error(e);
-              showError(e);
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ]
+    const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(selectedDate); dayEnd.setHours(23, 59, 59, 999);
+    const overlapping = windowReservations.filter(
+      (r) => r.courtId === selectedCourt && r.end > dayStart && r.start <= dayEnd
     );
+
+    (async () => {
+      const items: AgendaReservation[] = [];
+      for (const r of overlapping) {
+        const partSnap = await getDocs(
+          query(collection(db, 'reservationParticipants'), where('reservationId', '==', r.id))
+        );
+        const names: string[] = [];
+        const ids: string[] = [];
+        for (const p of partSnap.docs) {
+          const pData = p.data();
+          if (pData.userId) {
+            ids.push(pData.userId);
+            const uSnap = await getDoc(doc(db, 'users', pData.userId));
+            if (uSnap.exists()) {
+              const u = uSnap.data();
+              const isAnon = u?.isAnonymous === true;
+              names.push(isAnon ? 'Anônimo' : `${u?.firstName ?? ''} ${u?.lastName ?? ''}`.trim() || 'Jogador');
+            }
+          } else if (pData.guestName) {
+            names.push(pData.guestName);
+          }
+        }
+        items.push({
+          ...r,
+          participantNames: names,
+          participantIds: ids,
+          isMine: ids.includes(firebaseUser.uid),
+          isCreator: r.createdById === firebaseUser.uid,
+          isPast: r.end < new Date(),
+        });
+      }
+      if (!cancelled) setDayReservations(items);
+    })();
+
+    return () => { cancelled = true; };
+  }, [selectedDate, selectedCourt, windowReservations, firebaseUser]);
+
+  // Scroll inicial até perto do horário atual.
+  useEffect(() => {
+    if (loading || didScrollToNow.current) return;
+    didScrollToNow.current = true;
+    const h = new Date().getHours();
+    const y = Math.max(0, (h - 1) * ROW_HEIGHT);
+    setTimeout(() => scrollRef.current?.scrollTo({ y, animated: false }), 150);
+  }, [loading]);
+
+  const handleLeave = (reservationId: string) => {
+    if (!firebaseUser) return;
+    Alert.alert('Sair da reserva', 'Tem certeza que deseja sair desta reserva?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sair',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          try {
+            const partSnap = await getDocs(
+              query(
+                collection(db, 'reservationParticipants'),
+                where('reservationId', '==', reservationId),
+                where('userId', '==', firebaseUser.uid)
+              )
+            );
+            if (partSnap.empty) return;
+            const allPartSnap = await getDocs(
+              query(collection(db, 'reservationParticipants'), where('reservationId', '==', reservationId))
+            );
+            const batch = writeBatch(db);
+            batch.delete(partSnap.docs[0].ref);
+            if (allPartSnap.size === 1) batch.delete(doc(db, 'reservations', reservationId));
+            await batch.commit();
+            setSelected(null);
+            loadWindow(); // recarrega: se sobrou gente, a reserva continua (agora não é minha)
+          } catch (e) {
+            console.error(e);
+            showError(e);
+          } finally {
+            setBusy(false);
+          }
+        },
+      },
+    ]);
   };
 
-  const handleCancel = async (reservationId: string) => {
+  const handleCancel = (reservationId: string) => {
     if (!firebaseUser) return;
-    Alert.alert(
-      'Cancelar reserva',
-      'Isso vai cancelar a reserva para todos os participantes. Deseja continuar?',
-      [
-        { text: 'Voltar', style: 'cancel' },
-        {
-          text: 'Cancelar reserva',
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              const partSnap = await getDocs(
-                query(
-                  collection(db, 'reservationParticipants'),
-                  where('reservationId', '==', reservationId)
-                )
-              );
-
-              const batch = writeBatch(db);
-              partSnap.docs.forEach((d) => batch.delete(d.ref));
-              batch.delete(doc(db, 'reservations', reservationId));
-              await batch.commit();
-
-              setSelected(null);
-              setReservations((prev) => prev.filter((r) => r.id !== reservationId));
-            } catch (e) {
-              console.error(e);
-              showError(e);
-            } finally {
-              setBusy(false);
-            }
-          },
+    Alert.alert('Cancelar reserva', 'Isso vai cancelar a reserva para todos os participantes. Deseja continuar?', [
+      { text: 'Voltar', style: 'cancel' },
+      {
+        text: 'Cancelar reserva',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          try {
+            const partSnap = await getDocs(
+              query(collection(db, 'reservationParticipants'), where('reservationId', '==', reservationId))
+            );
+            const batch = writeBatch(db);
+            partSnap.docs.forEach((d) => batch.delete(d.ref));
+            batch.delete(doc(db, 'reservations', reservationId));
+            await batch.commit();
+            setSelected(null);
+            setWindowReservations((prev) => prev.filter((r) => r.id !== reservationId));
+          } catch (e) {
+            console.error(e);
+            showError(e);
+          } finally {
+            setBusy(false);
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  const displayed = reservations.filter((r) =>
-    tab === 'upcoming' ? !r.isPast : r.isPast
-  );
+  const isToday = selectedDate.toDateString() === now.toDateString();
+  const nowTop = isToday ? (now.getHours() * 60 + now.getMinutes()) * (ROW_HEIGHT / 60) : null;
+  const selectedCourtName = COURTS.find((c) => c.id === selectedCourt)?.name ?? '';
+  const dayStartForBlocks = new Date(selectedDate);
+  dayStartForBlocks.setHours(0, 0, 0, 0);
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tabBtn, tab === 'upcoming' && styles.tabBtnActive]}
-          onPress={() => setTab('upcoming')}
-        >
-          <Text style={[styles.tabBtnText, tab === 'upcoming' && styles.tabBtnTextActive]}>
-            Próximas
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabBtn, tab === 'past' && styles.tabBtnActive]}
-          onPress={() => setTab('past')}
-        >
-          <Text style={[styles.tabBtnText, tab === 'past' && styles.tabBtnTextActive]}>
-            Histórico
-          </Text>
-        </TouchableOpacity>
+      {/* Seletor de quadra */}
+      <TouchableOpacity
+        style={styles.courtSelector}
+        onPress={() => availableCourts.length > 1 && setCourtPickerOpen(true)}
+        activeOpacity={availableCourts.length > 1 ? 0.7 : 1}
+      >
+        <Text style={styles.courtName}>{selectedCourtName}</Text>
+        {availableCourts.length > 1 && <Ionicons name="chevron-down" size={20} color="#9ca3af" />}
+      </TouchableOpacity>
+
+      {/* Seletor de dia */}
+      <View style={styles.daySelector}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayScroll}>
+          {days.map((d) => {
+            const active = d.toDateString() === selectedDate.toDateString();
+            return (
+              <TouchableOpacity
+                key={dateKey(d)}
+                style={[styles.dayChip, active && styles.dayChipActive]}
+                onPress={() => setSelectedDate(d)}
+              >
+                <Text style={[styles.dayChipWeekday, active && styles.dayChipTextActive]}>
+                  {d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').toUpperCase()}
+                </Text>
+                <Text style={[styles.dayChipNumber, active && styles.dayChipTextActive]}>{d.getDate()}</Text>
+                {daysWithReservations.has(dateKey(d)) && (
+                  <View style={[styles.dayDot, active && styles.dayDotActive]} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color="#10b981" size="large" />
+          <ActivityIndicator size="large" color="#10b981" />
         </View>
       ) : error ? (
-        <ErrorState error={error} onRetry={load} fullPage />
+        <ErrorState error={error} onRetry={loadWindow} fullPage />
       ) : (
         <ScrollView
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />
-          }
+          ref={scrollRef}
+          style={styles.timelineScroll}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
         >
-          {displayed.length === 0 ? (
-            <View style={styles.empty}>
-              <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyText}>
-                {tab === 'upcoming'
-                  ? 'Nenhuma reserva futura.'
-                  : 'Nenhuma reserva anterior.'}
-              </Text>
-            </View>
-          ) : (
-            displayed.map((item) => (
-              <TouchableOpacity key={item.id} style={styles.card} onPress={() => setSelected(item)}>
-                <View style={styles.cardLeft}>
-                  <View style={[styles.dot, item.isPast && styles.dotPast]} />
+          <View style={{ height: 24 * ROW_HEIGHT }}>
+            {/* Grade de horas */}
+            {Array.from({ length: 24 }, (_, h) => (
+              <View key={h} style={styles.hourRow}>
+                <Text style={styles.hourLabel}>{String(h).padStart(2, '0')}:00</Text>
+                <View style={styles.hourLine} />
+              </View>
+            ))}
+
+            {/* Blocos de reserva */}
+            {dayReservations.map((r) => {
+              const startMin = Math.max(0, (r.start.getTime() - dayStartForBlocks.getTime()) / 60000);
+              const endMin = Math.min(24 * 60, (r.end.getTime() - dayStartForBlocks.getTime()) / 60000);
+              const top = startMin * (ROW_HEIGHT / 60);
+              const height = Math.max(32, (endMin - startMin) * (ROW_HEIGHT / 60));
+              return (
+                <TouchableOpacity
+                  key={r.id}
+                  style={[
+                    styles.block,
+                    { top, height },
+                    r.isMine ? styles.blockMine : styles.blockOther,
+                  ]}
+                  onPress={() => setSelected(r)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.blockNames, r.isMine ? styles.blockNamesMine : styles.blockNamesOther]} numberOfLines={1}>
+                    {r.participantNames.join(', ') || '—'}
+                  </Text>
+                  <Text style={styles.blockTime}>
+                    {formatTime(r.start)} – {formatTime(r.end)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {/* Linha do "agora" */}
+            {nowTop !== null && (
+              <View style={[styles.nowLine, { top: nowTop }]} pointerEvents="none">
+                <View style={styles.nowBadge}>
+                  <Text style={styles.nowBadgeText}>
+                    {String(now.getHours()).padStart(2, '0')}:{String(now.getMinutes()).padStart(2, '0')}
+                  </Text>
                 </View>
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardDate}>{item.dateLabel}</Text>
-                  <Text style={styles.cardTime}>{item.timeLabel}</Text>
-                  {item.participantCount > 1 && (
-                    <Text style={styles.cardParticipants}>
-                      {item.participantCount} participantes
-                    </Text>
-                  )}
-                </View>
-                {!item.isPast && (
-                  <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
-                )}
-              </TouchableOpacity>
-            ))
-          )}
+                <View style={styles.nowBar} />
+              </View>
+            )}
+          </View>
         </ScrollView>
       )}
 
+      {/* FAB nova reserva */}
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/nova-reserva')}
+        onPress={() =>
+          router.push({
+            pathname: '/nova-reserva',
+            params: { date: dateKey(selectedDate), courtId: selectedCourt },
+          })
+        }
         activeOpacity={0.85}
       >
         <Ionicons name="add" size={28} color="#ffffff" />
       </TouchableOpacity>
 
+      {/* Dropdown de quadra */}
+      <Modal visible={courtPickerOpen} transparent animationType="fade" onRequestClose={() => setCourtPickerOpen(false)}>
+        <TouchableOpacity style={styles.courtOverlay} activeOpacity={1} onPress={() => setCourtPickerOpen(false)}>
+          <View style={styles.courtMenu}>
+            {availableCourts.map((c) => (
+              <TouchableOpacity
+                key={c.id}
+                style={styles.courtMenuItem}
+                onPress={() => { setSelectedCourt(c.id); setCourtPickerOpen(false); }}
+              >
+                <Text style={[styles.courtMenuText, selectedCourt === c.id && styles.courtMenuTextActive]}>
+                  {c.name}
+                </Text>
+                {selectedCourt === c.id && <Ionicons name="checkmark" size={20} color="#10b981" />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <ReservationDetailModal
         item={selected}
-        visible={!!selected}
         onClose={() => setSelected(null)}
         onCancel={handleCancel}
         onLeave={handleLeave}
@@ -414,45 +524,83 @@ export default function ReservarScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f9fafb' },
-  tabs: {
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+  courtSelector: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     backgroundColor: '#ffffff',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
-    padding: 12,
-    gap: 8,
   },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: '#f3f4f6',
-  },
-  tabBtnActive: { backgroundColor: '#10b981' },
-  tabBtnText: { fontSize: 14, fontWeight: '600', color: '#6b7280' },
-  tabBtnTextActive: { color: '#ffffff' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  list: { padding: 16, gap: 10, paddingBottom: 80 },
-  empty: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  emptyText: { fontSize: 14, color: '#9ca3af', textAlign: 'center', lineHeight: 22 },
-  card: {
+  courtName: { fontSize: 20, fontWeight: '800', color: '#111827' },
+
+  daySelector: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    paddingVertical: 10,
   },
-  cardLeft: { alignItems: 'center' },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#10b981' },
-  dotPast: { backgroundColor: '#d1d5db' },
-  cardContent: { flex: 1 },
-  cardDate: { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 2 },
-  cardTime: { fontSize: 13, color: '#6b7280' },
-  cardParticipants: { fontSize: 12, color: '#10b981', marginTop: 2 },
+  dayScroll: { paddingHorizontal: 12, gap: 8 },
+  dayChip: {
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    minWidth: 48,
+  },
+  dayChipActive: { backgroundColor: '#10b981' },
+  dayChipWeekday: { fontSize: 11, fontWeight: '600', color: '#6b7280' },
+  dayChipNumber: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  dayChipTextActive: { color: '#ffffff' },
+  dayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#10b981', marginTop: 3 },
+  dayDotActive: { backgroundColor: '#ffffff' },
+
+  timelineScroll: { flex: 1 },
+  hourRow: { height: ROW_HEIGHT, flexDirection: 'row' },
+  hourLabel: {
+    width: LABEL_WIDTH,
+    fontSize: 12,
+    color: '#9ca3af',
+    paddingTop: 2,
+    paddingLeft: 12,
+  },
+  hourLine: { flex: 1, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
+
+  block: {
+    position: 'absolute',
+    left: LABEL_WIDTH + 4,
+    right: 10,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  blockMine: { backgroundColor: '#d1fae5', borderLeftColor: '#10b981' },
+  blockOther: { backgroundColor: '#fef9c3', borderLeftColor: '#eab308' },
+  blockNames: { fontSize: 13, fontWeight: '700' },
+  blockNamesMine: { color: '#065f46' },
+  blockNamesOther: { color: '#854d0e' },
+  blockTime: { fontSize: 11, color: '#6b7280', marginTop: 1 },
+
+  nowLine: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center' },
+  nowBadge: {
+    width: LABEL_WIDTH,
+    alignItems: 'center',
+  },
+  nowBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#dc2626',
+    backgroundColor: '#fff',
+  },
+  nowBar: { flex: 1, height: 2, backgroundColor: '#ef4444' },
+
   fab: {
     position: 'absolute',
     bottom: 24,
@@ -469,7 +617,31 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-  // Modal
+
+  courtOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.15)' },
+  courtMenu: {
+    backgroundColor: '#ffffff',
+    marginTop: 100,
+    marginHorizontal: 16,
+    borderRadius: 14,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  courtMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  courtMenuText: { fontSize: 16, fontWeight: '500', color: '#374151' },
+  courtMenuTextActive: { fontWeight: '700', color: '#065f46' },
+
+  // Modal detalhes
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -485,12 +657,7 @@ const styles = StyleSheet.create({
     maxWidth: 380,
     gap: 12,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   modalTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
   modalRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   modalText: { fontSize: 14, color: '#374151', flexShrink: 1 },
