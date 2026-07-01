@@ -21,6 +21,7 @@ import {
   deleteDoc,
   writeBatch,
 } from 'firebase/firestore';
+import { useRouter } from 'expo-router';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { Reservation, ReservationParticipant } from '@/types';
@@ -133,6 +134,7 @@ function ReservationDetailModal({
 export default function ReservarScreen() {
   const { firebaseUser } = useAuth();
   const { showError } = useToast();
+  const router = useRouter();
   const [reservations, setReservations] = useState<ReservationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -390,11 +392,13 @@ export default function ReservarScreen() {
         </ScrollView>
       )}
 
-      <View style={styles.fabHint}>
-        <Text style={styles.fabHintText}>
-          Para criar reservas, acesse o app web ou aguarde a próxima versão do app.
-        </Text>
-      </View>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/nova-reserva')}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="add" size={28} color="#ffffff" />
+      </TouchableOpacity>
 
       <ReservationDetailModal
         item={selected}
@@ -449,17 +453,22 @@ const styles = StyleSheet.create({
   cardDate: { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 2 },
   cardTime: { fontSize: 13, color: '#6b7280' },
   cardParticipants: { fontSize: 12, color: '#10b981', marginTop: 2 },
-  fabHint: {
+  fab: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fffbeb',
-    borderTopWidth: 1,
-    borderTopColor: '#fde68a',
-    padding: 12,
+    bottom: 24,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  fabHintText: { fontSize: 12, color: '#92400e', textAlign: 'center' },
   // Modal
   overlay: {
     flex: 1,

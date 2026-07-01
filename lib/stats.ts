@@ -19,6 +19,13 @@ const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const DAY_NAMES_LONG = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 const FIRESTORE_IN_LIMIT = 30;
 
+// Detecção de padrão para sugestão de reserva (espelha src/lib/queries/stats.ts do web).
+const MIN_PAST_RESERVATIONS_FOR_SUGGESTION = 5;
+const MIN_SLOT_OCCURRENCES = 3;
+const MIN_SLOT_PERCENT = 0.25;
+const FALLBACK_MIN_OCCURRENCES = 2;
+const FALLBACK_MIN_PERCENT = 0.2;
+
 export interface NextReservationInfo {
   id: string;
   dateLabel: string;
@@ -47,6 +54,14 @@ export interface ReservationListItem {
   createdById: string;
 }
 
+/** Sugestão de reserva baseada no padrão de uso (ex.: sempre quarta às 19h). */
+export interface ReservationSuggestion {
+  dayOfWeek: number;
+  hour: number;
+  label: string;
+  nextDateISO: string;
+}
+
 export interface UserStats {
   totalHours: number;
   totalReservations: number;
@@ -56,6 +71,7 @@ export interface UserStats {
   nextReservation: NextReservationInfo | null;
   upcomingReservations: ReservationListItem[];
   pastReservations: ReservationListItem[];
+  reservationSuggestion: ReservationSuggestion | null;
 }
 
 function formatTime(d: Date): string {
@@ -151,6 +167,110 @@ function computeWeekStreak(dates: Date[]): number {
   return streak;
 }
 
+/** Detecta o slot (dia da semana + hora) mais recorrente do usuário. */
+function detectReservationPattern(
+  pastStartDates: Date[]
+): { dayOfWeek: number; hour: number } | null {
+  if (pastStartDates.length < MIN_PAST_RESERVATIONS_FOR_SUGGESTION) return null;
+
+  const slotCounts = new Map<string, number>();
+  for (const d of pastStartDates) {
+    const key = `${d.getDay()}-${d.getHours()}`;
+    slotCounts.set(key, (slotCounts.get(key) ?? 0) + 1);
+  }
+
+  const total = pastStartDates.length;
+  let best: { dayOfWeek: number; hour: number; count: number } | null = null;
+  for (const [key, count] of slotCounts) {
+    const [dayStr, hourStr] = key.split('-');
+    const dayOfWeek = parseInt(dayStr, 10);
+    const hour = parseInt(hourStr, 10);
+    const percent = count / total;
+    if (count >= MIN_SLOT_OCCURRENCES && percent >= MIN_SLOT_PERCENT) {
+      if (!best || count > best.count) best = { dayOfWeek, hour, count };
+    }
+  }
+  if (best) return { dayOfWeek: best.dayOfWeek, hour: best.hour };
+
+  const sorted = Array.from(slotCounts.entries())
+    .map(([key, count]) => {
+      const [dayStr, hourStr] = key.split('-');
+      return { dayOfWeek: parseInt(dayStr, 10), hour: parseInt(hourStr, 10), count, percent: count / total };
+    })
+    .filter((e) => e.count >= FALLBACK_MIN_OCCURRENCES && e.percent >= FALLBACK_MIN_PERCENT)
+    .sort((a, b) => b.count - a.count);
+
+  if (sorted.length === 0) return null;
+  return { dayOfWeek: sorted[0].dayOfWeek, hour: sorted[0].hour };
+}
+
+/** Próxima ocorrência de (dia da semana, hora) a partir de agora, em ISO date (YYYY-MM-DD). */
+function getNextOccurrenceISO(dayOfWeek: number, hour: number): string {
+  const now = new Date();
+  const d = new Date(now);
+  d.setHours(hour, 0, 0, 0);
+  let diff = dayOfWeek - d.getDay();
+  if (diff < 0) diff += 7;
+  if (diff === 0 && d.getTime() <= now.getTime()) diff = 7;
+  d.setDate(d.getDate() + diff);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function buildSuggestionLabel(dayOfWeek: number, hour: number): string {
+  const dayName = DAY_NAMES_LONG[dayOfWeek] ?? DAY_NAMES[dayOfWeek];
+  return `${dayName} às ${hour}h`;
+}
+
+/**
+ * Parceiros mais frequentes do usuário (mesma base do topPartners de getUserStats),
+ * numa consulta leve para a tela de nova reserva. Retorna até `limit` parceiros.
+ */
+export async function getSuggestedPartners(userId: string, limit = 6): Promise<PartnerStat[]> {
+  const reservationIds = await getReservationIdsForUser(userId);
+  const allReservations = await getReservationsByIds(Array.from(reservationIds));
+  const now = new Date();
+  const past = allReservations.filter((r) => r.endAt <= now);
+
+  const partnerCounts = new Map<string, number>();
+  const participantsSnaps = await Promise.all(
+    past.map((r) =>
+      getDocs(query(collection(db, 'reservationParticipants'), where('reservationId', '==', r.id)))
+    )
+  );
+  for (const snap of participantsSnaps) {
+    snap.docs.forEach((d) => {
+      const uid = d.data().userId;
+      if (uid && uid !== userId) partnerCounts.set(uid, (partnerCounts.get(uid) ?? 0) + 1);
+    });
+  }
+  const topIds = Array.from(partnerCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit);
+  const docs = await Promise.all(topIds.map(([uid]) => getDoc(doc(db, 'users', uid))));
+  const partners: PartnerStat[] = [];
+  for (let i = 0; i < topIds.length; i++) {
+    const [uid, count] = topIds[i];
+    const snap = docs[i];
+    if (snap.exists()) {
+      const u = snap.data();
+      if (u?.isAnonymous === true) continue;
+      const firstName = u?.firstName ?? '';
+      const lastName = u?.lastName ?? '';
+      partners.push({
+        userId: uid,
+        name: `${firstName} ${lastName}`.trim() || 'Jogador',
+        initials: `${(firstName || 'J')[0]}${(lastName || '?')[0]}`.toUpperCase(),
+        pictureUrl: u?.pictureUrl,
+        count,
+      });
+    }
+  }
+  return partners;
+}
+
 export async function getUserStats(userId: string): Promise<UserStats> {
   const reservationIds = await getReservationIdsForUser(userId);
   const allReservations = await getReservationsByIds(Array.from(reservationIds));
@@ -243,6 +363,24 @@ export async function getUserStats(userId: string): Promise<UserStats> {
     createdById: r.createdById,
   }));
 
+  // Sugestão de reserva: slot recorrente que ainda não foi reservado.
+  let reservationSuggestion: ReservationSuggestion | null = null;
+  const pattern = detectReservationPattern(past.map((r) => r.startAt));
+  if (pattern) {
+    const nextDateISO = getNextOccurrenceISO(pattern.dayOfWeek, pattern.hour);
+    const toLocalISO = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const alreadyBooked = future.some((r) => toLocalISO(r.startAt) === nextDateISO);
+    if (!alreadyBooked) {
+      reservationSuggestion = {
+        dayOfWeek: pattern.dayOfWeek,
+        hour: pattern.hour,
+        label: buildSuggestionLabel(pattern.dayOfWeek, pattern.hour),
+        nextDateISO,
+      };
+    }
+  }
+
   return {
     totalHours,
     totalReservations: allReservations.length,
@@ -252,5 +390,6 @@ export async function getUserStats(userId: string): Promise<UserStats> {
     nextReservation,
     upcomingReservations,
     pastReservations,
+    reservationSuggestion,
   };
 }

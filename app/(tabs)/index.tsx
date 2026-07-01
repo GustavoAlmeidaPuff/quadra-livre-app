@@ -17,6 +17,22 @@ import ErrorState from '@/components/ErrorState';
 import { getFriendlyError, FriendlyError } from '@/lib/errors';
 import Avatar from '@/components/Avatar';
 
+function capitalize(s: string): string {
+  return s.length ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/** "Hoje", "Amanhã" ou "seg, 8 jul" a partir de uma data ISO local (YYYY-MM-DD). */
+function suggestionDateLabel(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today.getTime() + 86400000);
+  if (date.toDateString() === today.toDateString()) return 'Hoje';
+  if (date.toDateString() === tomorrow.toDateString()) return 'Amanhã';
+  return date.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
 export default function HomeScreen() {
   const { appUser, firebaseUser } = useAuth();
   const router = useRouter();
@@ -50,6 +66,7 @@ export default function HomeScreen() {
   const onRefresh = () => { setRefreshing(true); load(); };
 
   const maxCount = Math.max(...(stats?.dayStats.map((d) => d.count) ?? [0]), 1);
+  const defaultCourtId = appUser?.courtIds?.[0] ?? 'quadra_1';
 
   if (loading) {
     return (
@@ -96,6 +113,39 @@ export default function HomeScreen() {
               {stats.nextReservation.participants.join(', ')}
             </Text>
           )}
+        </View>
+      )}
+
+      {/* Smart reservation suggestion */}
+      {stats?.reservationSuggestion && (
+        <View style={styles.suggestionCard}>
+          <View style={styles.suggestionHeader}>
+            <Text style={styles.suggestionLabel}>SUA RESERVA DE SEMPRE</Text>
+            <Ionicons name="sparkles" size={16} color="#d97706" />
+          </View>
+          <Text style={styles.suggestionTitle}>
+            {capitalize(stats.reservationSuggestion.label)}
+          </Text>
+          <Text style={styles.suggestionSub}>
+            {suggestionDateLabel(stats.reservationSuggestion.nextDateISO)} · já preenchemos tudo pra você
+          </Text>
+          <TouchableOpacity
+            style={styles.suggestionBtn}
+            onPress={() =>
+              router.push({
+                pathname: '/nova-reserva',
+                params: {
+                  date: stats!.reservationSuggestion!.nextDateISO,
+                  hour: String(stats!.reservationSuggestion!.hour),
+                  courtId: defaultCourtId,
+                },
+              })
+            }
+          >
+            <Ionicons name="tennisball-outline" size={18} color="#ffffff" />
+            <Text style={styles.suggestionBtnText}>Reservar</Text>
+            <Ionicons name="arrow-forward" size={16} color="#ffffff" />
+          </TouchableOpacity>
         </View>
       )}
 
@@ -213,6 +263,33 @@ const styles = StyleSheet.create({
   nextCardDate: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 2 },
   nextCardTime: { fontSize: 14, color: '#374151', marginBottom: 4 },
   nextCardParticipants: { fontSize: 12, color: '#059669' },
+
+  suggestionCard: {
+    backgroundColor: '#fffbeb',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  suggestionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  suggestionLabel: { fontSize: 11, fontWeight: '700', color: '#b45309', letterSpacing: 0.5 },
+  suggestionTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 2 },
+  suggestionSub: { fontSize: 13, color: '#92400e', marginBottom: 14 },
+  suggestionBtn: {
+    backgroundColor: '#10b981',
+    borderRadius: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  suggestionBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 15 },
 
   statsGrid: { flexDirection: 'row', gap: 10 },
   statCard: {
