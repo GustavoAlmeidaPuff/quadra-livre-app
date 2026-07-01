@@ -4,13 +4,13 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Image,
   Modal,
   Pressable,
   Animated,
   Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Avatar from '@/components/Avatar';
 import {
   collection,
   query,
@@ -266,13 +266,7 @@ export default function AppHeader() {
           style={styles.avatarBtn}
           onPress={() => router.push('/perfil')}
         >
-          {appUser?.pictureUrl ? (
-            <Image source={{ uri: appUser.pictureUrl }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
-          )}
+          <Avatar uri={appUser?.pictureUrl} initials={initials} size={32} />
           <Ionicons name="chevron-down" size={14} color="#6b7280" />
         </TouchableOpacity>
 
@@ -309,21 +303,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  avatarFallback: {
-    backgroundColor: '#10b981',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 13,
   },
   courtStatus: {
     flexDirection: 'row',

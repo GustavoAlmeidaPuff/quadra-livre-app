@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import PostContent from '@/components/PostContent';
 import PhotoViewer from '@/components/PhotoViewer';
 import { useToast } from '@/components/Toast';
+import Avatar from '@/components/Avatar';
 import {
   collection,
   query,
@@ -241,13 +242,7 @@ function FeedTab({ currentUserId }: { currentUserId: string }) {
           posts.map((post) => (
             <View key={post.id} style={feedStyles.postCard}>
               <View style={feedStyles.postHeader}>
-                {post.author.pictureUrl ? (
-                  <Image source={{ uri: post.author.pictureUrl }} style={feedStyles.avatar} />
-                ) : (
-                  <View style={[feedStyles.avatar, feedStyles.avatarFallback]}>
-                    <Text style={feedStyles.avatarText}>{post.author.initials}</Text>
-                  </View>
-                )}
+                <Avatar uri={post.author.pictureUrl} initials={post.author.initials} size={38} fontSize={14} />
                 <View style={{ flex: 1 }}>
                   <Text style={feedStyles.authorName}>{post.author.name}</Text>
                   <Text style={feedStyles.postTime}>{timeAgo(post.createdAt)}</Text>
@@ -336,13 +331,7 @@ function RankingTab() {
       {ranking.map((entry, i) => (
         <View key={entry.id} style={rankingStyles.row}>
           <Text style={rankingStyles.rank}>#{i + 1}</Text>
-          {entry.pictureUrl ? (
-            <Image source={{ uri: entry.pictureUrl }} style={rankingStyles.avatar} />
-          ) : (
-            <View style={[rankingStyles.avatar, rankingStyles.avatarFallback]}>
-              <Text style={rankingStyles.avatarText}>{entry.initials}</Text>
-            </View>
-          )}
+          <Avatar uri={entry.pictureUrl} initials={entry.initials} size={36} />
           <Text style={rankingStyles.name}>{entry.name}</Text>
           <Text style={rankingStyles.hours}>{entry.hours}h</Text>
         </View>
@@ -387,13 +376,7 @@ function QuemAnimaTab({ currentUserId }: { currentUserId: string }) {
       ) : (
         partners.map((p) => (
           <View key={p.id} style={quemStyles.row}>
-            {p.pictureUrl ? (
-              <Image source={{ uri: p.pictureUrl }} style={quemStyles.avatar} />
-            ) : (
-              <View style={[quemStyles.avatar, quemStyles.avatarFallback]}>
-                <Text style={quemStyles.avatarText}>{p.initials}</Text>
-              </View>
-            )}
+            <Avatar uri={p.pictureUrl} initials={p.initials} size={36} />
             <Text style={quemStyles.name}>{p.name}</Text>
             <Text style={quemStyles.count}>{p.count} {p.count === 1 ? 'jogo' : 'jogos'}</Text>
           </View>
@@ -504,9 +487,6 @@ const feedStyles = StyleSheet.create({
     gap: 10,
   },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar: { width: 38, height: 38, borderRadius: 19 },
-  avatarFallback: { backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { color: '#ffffff', fontWeight: '700', fontSize: 14 },
   authorName: { fontSize: 14, fontWeight: '700', color: '#111827' },
   postTime: { fontSize: 12, color: '#9ca3af' },
   postContent: { fontSize: 14, color: '#374151', lineHeight: 20 },
@@ -529,9 +509,6 @@ const rankingStyles = StyleSheet.create({
     borderColor: '#e5e7eb',
   },
   rank: { fontSize: 14, fontWeight: '700', color: '#9ca3af', width: 28 },
-  avatar: { width: 36, height: 36, borderRadius: 18 },
-  avatarFallback: { backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
   name: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111827' },
   hours: { fontSize: 14, fontWeight: '700', color: '#10b981' },
 });
@@ -551,9 +528,6 @@ const quemStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
   },
-  avatar: { width: 36, height: 36, borderRadius: 18 },
-  avatarFallback: { backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
   name: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111827' },
   count: { fontSize: 13, color: '#6b7280' },
 });
