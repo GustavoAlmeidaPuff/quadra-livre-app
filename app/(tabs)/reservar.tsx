@@ -29,6 +29,7 @@ import { useToast } from '@/components/Toast';
 import ErrorState from '@/components/ErrorState';
 import { getFriendlyError, FriendlyError } from '@/lib/errors';
 import { COURTS, normalizeCourtId } from '@/lib/courts';
+import { canManageCourt } from '@/lib/permissions';
 
 const ROW_HEIGHT = 60; // px por hora
 const LABEL_WIDTH = 52;
@@ -173,6 +174,25 @@ export default function ReservarScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
   const didScrollToNow = useRef(false);
+
+  // managerIds de cada quadra visível — usado só pra decidir se mostra a engrenagem.
+  const [courtManagerIds, setCourtManagerIds] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    if (!availableCourts.length) return;
+    (async () => {
+      const entries = await Promise.all(
+        availableCourts.map(async (c) => {
+          const snap = await getDoc(doc(db, 'courts', c.id));
+          return [c.id, snap.exists() ? (snap.data().managerIds ?? []) : []] as const;
+        })
+      );
+      setCourtManagerIds(Object.fromEntries(entries));
+    })();
+  }, [availableCourts]);
+
+  const canManageSelectedCourt =
+    !!firebaseUser &&
+    canManageCourt(firebaseUser.uid, firebaseUser.email, courtManagerIds[selectedCourt] ?? []);
 
   // Ajusta a quadra selecionada às quadras do usuário.
   useEffect(() => {
@@ -381,14 +401,24 @@ export default function ReservarScreen() {
   return (
     <View style={styles.container}>
       {/* Seletor de quadra */}
-      <TouchableOpacity
-        style={styles.courtSelector}
-        onPress={() => availableCourts.length > 1 && setCourtPickerOpen(true)}
-        activeOpacity={availableCourts.length > 1 ? 0.7 : 1}
-      >
-        <Text style={styles.courtName}>{selectedCourtName}</Text>
-        {availableCourts.length > 1 && <Ionicons name="chevron-down" size={20} color="#9ca3af" />}
-      </TouchableOpacity>
+      <View style={styles.courtSelector}>
+        <TouchableOpacity
+          style={styles.courtSelectorMain}
+          onPress={() => availableCourts.length > 1 && setCourtPickerOpen(true)}
+          activeOpacity={availableCourts.length > 1 ? 0.7 : 1}
+        >
+          <Text style={styles.courtName}>{selectedCourtName}</Text>
+          {availableCourts.length > 1 && <Ionicons name="chevron-down" size={20} color="#9ca3af" />}
+        </TouchableOpacity>
+        {availableCourts.length === 1 && canManageSelectedCourt && (
+          <TouchableOpacity
+            style={styles.gearBtn}
+            onPress={() => router.push({ pathname: '/gerenciar-quadra', params: { courtId: selectedCourt } })}
+          >
+            <Ionicons name="settings-outline" size={20} color="#6b7280" />
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* Seletor de dia */}
       <View style={styles.daySelector}>
@@ -495,18 +525,36 @@ export default function ReservarScreen() {
       <Modal visible={courtPickerOpen} transparent animationType="fade" onRequestClose={() => setCourtPickerOpen(false)}>
         <TouchableOpacity style={styles.courtOverlay} activeOpacity={1} onPress={() => setCourtPickerOpen(false)}>
           <View style={styles.courtMenu}>
-            {availableCourts.map((c) => (
-              <TouchableOpacity
-                key={c.id}
-                style={styles.courtMenuItem}
-                onPress={() => { setSelectedCourt(c.id); setCourtPickerOpen(false); }}
-              >
-                <Text style={[styles.courtMenuText, selectedCourt === c.id && styles.courtMenuTextActive]}>
-                  {c.name}
-                </Text>
-                {selectedCourt === c.id && <Ionicons name="checkmark" size={20} color="#10b981" />}
-              </TouchableOpacity>
-            ))}
+            {availableCourts.map((c) => {
+              const canManageThis =
+                !!firebaseUser && canManageCourt(firebaseUser.uid, firebaseUser.email, courtManagerIds[c.id] ?? []);
+              return (
+                <View key={c.id} style={styles.courtMenuItem}>
+                  <TouchableOpacity
+                    style={styles.courtMenuItemMain}
+                    onPress={() => { setSelectedCourt(c.id); setCourtPickerOpen(false); }}
+                  >
+                    <Text style={[styles.courtMenuText, selectedCourt === c.id && styles.courtMenuTextActive]}>
+                      {c.name}
+                    </Text>
+                  </TouchableOpacity>
+                  <View style={styles.courtMenuRight}>
+                    {canManageThis && (
+                      <TouchableOpacity
+                        style={styles.gearBtnSm}
+                        onPress={() => {
+                          setCourtPickerOpen(false);
+                          router.push({ pathname: '/gerenciar-quadra', params: { courtId: c.id } });
+                        }}
+                      >
+                        <Ionicons name="settings-outline" size={18} color="#6b7280" />
+                      </TouchableOpacity>
+                    )}
+                    {selectedCourt === c.id && <Ionicons name="checkmark" size={20} color="#10b981" />}
+                  </View>
+                </View>
+              );
+            })}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -536,7 +584,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
+  courtSelectorMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
   courtName: { fontSize: 20, fontWeight: '800', color: '#111827' },
+  gearBtn: { padding: 6, marginLeft: 8 },
+  gearBtnSm: { padding: 6, marginRight: 4 },
 
   daySelector: {
     backgroundColor: '#ffffff',
@@ -638,6 +689,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 14,
   },
+  courtMenuItemMain: { flex: 1 },
+  courtMenuRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   courtMenuText: { fontSize: 16, fontWeight: '500', color: '#374151' },
   courtMenuTextActive: { fontWeight: '700', color: '#065f46' },
 

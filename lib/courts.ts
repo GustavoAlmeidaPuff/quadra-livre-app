@@ -1,3 +1,5 @@
+export const DEVELOPER_EMAIL = 'admin@quadralivre.com';
+
 export const COURTS = [
   { id: 'quadra_1', name: 'Igrejinha' },
   { id: 'quadra_2', name: 'Três Coroas' },

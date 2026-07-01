@@ -1,9 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
+  Platform,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
@@ -31,11 +32,15 @@ interface WheelColumnProps {
 function WheelColumn({ values, selectedIndex, onChange, suffix }: WheelColumnProps) {
   const scrollRef = useRef<ScrollView>(null);
   const [active, setActive] = useState(selectedIndex);
+  const snapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Posiciona no valor inicial (sem animação) ao montar.
+  // Posiciona no valor inicial. No nativo, onContentSizeChange é confiável (o
+  // conteúdo já está medido quando dispara). Na web o posicionamento é feito no
+  // efeito web abaixo (via rAF), porque aqui o scrollTo era limitado a 0 e a roda
+  // abria no primeiro item (ex.: 06h) mesmo com a hora real sendo 19h.
   const didInit = useRef(false);
-  const onLayout = () => {
-    if (didInit.current) return;
+  const onContentSizeChange = () => {
+    if (Platform.OS === 'web' || didInit.current) return;
     didInit.current = true;
     scrollRef.current?.scrollTo({ y: selectedIndex * ITEM_HEIGHT, animated: false });
   };
@@ -43,21 +48,102 @@ function WheelColumn({ values, selectedIndex, onChange, suffix }: WheelColumnPro
   const indexFromOffset = (y: number) =>
     Math.max(0, Math.min(values.length - 1, Math.round(y / ITEM_HEIGHT)));
 
+  // "Imã": ao parar de rolar, centraliza no número mais próximo e confirma o valor.
+  // Feito manualmente (não só via snapToInterval) porque onMomentumScrollEnd não
+  // dispara de forma confiável na web — sem isto, soltar entre dois números deixava
+  // a roda torta e não atualizava a hora.
+  const snapTo = (offsetY: number) => {
+    const idx = indexFromOffset(offsetY);
+    const target = idx * ITEM_HEIGHT;
+    if (Math.abs(offsetY - target) > 0.5) {
+      scrollRef.current?.scrollTo({ y: target, animated: true });
+    }
+    setActive(idx);
+    onChange(idx);
+  };
+
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const idx = indexFromOffset(e.nativeEvent.contentOffset.y);
+    const y = e.nativeEvent.contentOffset.y;
+    const idx = indexFromOffset(y);
     if (idx !== active) setActive(idx);
+    // Debounce: quando os eventos de scroll param, o imã age.
+    if (snapTimer.current) clearTimeout(snapTimer.current);
+    snapTimer.current = setTimeout(() => snapTo(y), 110);
   };
 
   const settle = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const idx = indexFromOffset(e.nativeEvent.contentOffset.y);
-    setActive(idx);
-    if (idx !== selectedIndex) onChange(idx);
+    if (snapTimer.current) clearTimeout(snapTimer.current);
+    snapTo(e.nativeEvent.contentOffset.y);
   };
+
+  // Sempre aponta pro snapTo mais recente (evita closure velha nos handlers de mouse).
+  const snapToRef = useRef(snapTo);
+  snapToRef.current = snapTo;
+
+  useEffect(() => () => { if (snapTimer.current) clearTimeout(snapTimer.current); }, []);
+
+  // Web: posicionamento inicial robusto + arraste com o mouse (pra testes).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const node: any = (scrollRef.current as any)?.getScrollableNode?.();
+    if (!node) return;
+
+    // Posiciona no valor inicial assim que o conteúdo tiver altura suficiente.
+    // (No layout inicial scrollHeight ainda é pequeno e o scroll seria limitado a 0.)
+    const target = selectedIndex * ITEM_HEIGHT;
+    let raf = 0;
+    let tries = 0;
+    const positionInit = () => {
+      if (node.scrollHeight - node.clientHeight >= target || tries > 30) {
+        node.scrollTop = target;
+        return;
+      }
+      tries += 1;
+      raf = requestAnimationFrame(positionInit);
+    };
+    positionInit();
+
+    // Arrastar com o mouse pra cima/baixo como se fosse toque. O scroll do mouse
+    // pula de 2 em 2; o arraste dá controle fino de 1 em 1.
+    node.style.cursor = 'grab';
+    node.style.userSelect = 'none';
+    let dragging = false;
+    let startY = 0;
+    let startTop = 0;
+
+    const onDown = (e: any) => {
+      dragging = true;
+      startY = e.clientY;
+      startTop = node.scrollTop;
+      node.style.cursor = 'grabbing';
+      e.preventDefault();
+    };
+    const onMove = (e: any) => {
+      if (!dragging) return;
+      node.scrollTop = startTop - (e.clientY - startY);
+    };
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      node.style.cursor = 'grab';
+      snapToRef.current(node.scrollTop);
+    };
+
+    node.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      cancelAnimationFrame(raf);
+      node.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   return (
     <ScrollView
       ref={scrollRef}
-      onLayout={onLayout}
+      onContentSizeChange={onContentSizeChange}
       style={styles.column}
       showsVerticalScrollIndicator={false}
       snapToInterval={ITEM_HEIGHT}

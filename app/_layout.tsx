@@ -73,6 +73,7 @@ export default function RootLayout() {
           <Stack.Screen name="perfil" options={({ route }) => ({ title: (route.params as any)?.userId ? 'Perfil' : 'Meu Perfil', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } })} />
           <Stack.Screen name="notificacoes" options={{ title: 'Notificações', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
           <Stack.Screen name="nova-reserva" options={{ title: 'Nova reserva', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
+          <Stack.Screen name="gerenciar-quadra" options={{ title: 'Gerenciar quadra', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
           <Stack.Screen name="+not-found" />
         </Stack>
       </AuthGuard>
