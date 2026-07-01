@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   StyleSheet,
   TouchableOpacity,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
@@ -16,6 +15,7 @@ import { getUserStats, UserStats } from '@/lib/stats';
 import { useToast } from '@/components/Toast';
 import ErrorState from '@/components/ErrorState';
 import { getFriendlyError, FriendlyError } from '@/lib/errors';
+import Avatar from '@/components/Avatar';
 
 export default function HomeScreen() {
   const { appUser, firebaseUser } = useAuth();
@@ -158,13 +158,7 @@ export default function HomeScreen() {
                 onPress={() => router.push(`/perfil?userId=${p.userId}`)}
               >
                 <View style={styles.partnerLeft}>
-                  {p.pictureUrl ? (
-                    <Image source={{ uri: p.pictureUrl }} style={styles.partnerAvatar} />
-                  ) : (
-                    <View style={[styles.partnerAvatar, styles.partnerAvatarFallback]}>
-                      <Text style={styles.partnerInitials}>{p.initials}</Text>
-                    </View>
-                  )}
+                  <Avatar uri={p.pictureUrl} initials={p.initials} size={32} />
                   <Text style={styles.partnerName}>{p.name}</Text>
                 </View>
                 <Text style={styles.partnerCount}>
@@ -262,9 +256,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   partnerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  partnerAvatar: { width: 32, height: 32, borderRadius: 16 },
-  partnerAvatarFallback: { backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'center' },
-  partnerInitials: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
   partnerName: { fontSize: 14, fontWeight: '500', color: '#111827' },
   partnerCount: { fontSize: 12, color: '#6b7280' },
 
