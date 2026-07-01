@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Image,
   StyleSheet,
   Alert,
   ActivityIndicator,
@@ -18,6 +17,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { getUserStats, UserStats } from '@/lib/stats';
 import { User } from '@/types';
 import PhotoViewer from '@/components/PhotoViewer';
+import Avatar from '@/components/Avatar';
 
 function getInitials(firstName?: string, lastName?: string): string {
   return `${(firstName || 'U')[0]}${(lastName || '')[0] || ''}`.toUpperCase();
@@ -91,18 +91,14 @@ export default function PerfilScreen() {
           onPress={() => profileUser?.pictureUrl && setPhotoVisible(true)}
           activeOpacity={profileUser?.pictureUrl ? 0.8 : 1}
         >
-          {profileUser?.pictureUrl ? (
-            <View>
-              <Image source={{ uri: profileUser.pictureUrl }} style={styles.avatar} />
+          <View>
+            <Avatar uri={profileUser?.pictureUrl} initials={initials} size={80} fontSize={28} fontWeight="800" />
+            {profileUser?.pictureUrl && (
               <View style={styles.avatarZoomHint}>
                 <Ionicons name="expand-outline" size={14} color="#ffffff" />
               </View>
-            </View>
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
-          )}
+            )}
+          </View>
         </TouchableOpacity>
         <Text style={styles.name}>{fullName || 'Usuário'}</Text>
         {isOwnProfile && (
@@ -238,9 +234,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   profileHeader: { alignItems: 'center', gap: 8, paddingVertical: 16 },
-  avatar: { width: 80, height: 80, borderRadius: 40 },
-  avatarFallback: { backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { color: '#ffffff', fontWeight: '800', fontSize: 28 },
   avatarZoomHint: {
     position: 'absolute',
     bottom: 0,
