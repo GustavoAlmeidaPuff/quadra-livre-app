@@ -25,12 +25,23 @@ import {
   updateDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
+import {
+  GoogleSignin,
+  isErrorWithCode,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import { useRouter } from 'expo-router';
 import { auth, db } from '@/lib/firebase';
 
-WebBrowser.maybeCompleteAuthSession();
+const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+
+if (googleWebClientId) {
+  GoogleSignin.configure({
+    webClientId: googleWebClientId,
+    iosClientId: googleIosClientId,
+  });
+}
 
 type AuthMode = 'login' | 'signup';
 
@@ -81,25 +92,29 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
-  const googleEnabled = Platform.OS !== 'android' || !!androidClientId;
+  const googleEnabled = !!googleWebClientId;
 
-  const [, googleResponse, promptGoogleAsync] = Google.useAuthRequest(
-    {
-      androidClientId: androidClientId || undefined,
-      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    },
-    { useProxy: true }
-  );
-
-  // Handle Google response
-  React.useEffect(() => {
-    if (googleResponse?.type === 'success') {
-      const { id_token } = googleResponse.params;
-      handleGoogleCredential(id_token);
+  const handleGoogleSignIn = async () => {
+    try {
+      setError('');
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+      if (response.type === 'success' && response.data.idToken) {
+        await handleGoogleCredential(response.data.idToken);
+      }
+    } catch (e: unknown) {
+      if (isErrorWithCode(e)) {
+        if (e.code === statusCodes.SIGN_IN_CANCELLED || e.code === statusCodes.IN_PROGRESS) {
+          return;
+        }
+        if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          setError('Google Play Services indisponível neste aparelho.');
+          return;
+        }
+      }
+      setError('Não foi possível entrar com Google. Tente novamente.');
     }
-  }, [googleResponse]);
+  };
 
   const handleGoogleCredential = async (idToken: string) => {
     try {
@@ -170,7 +185,7 @@ export default function LoginScreen() {
           {googleEnabled && (
             <TouchableOpacity
               style={styles.googleButton}
-              onPress={() => promptGoogleAsync()}
+              onPress={handleGoogleSignIn}
               disabled={loading}
             >
               <Text style={styles.googleIcon}>G</Text>
