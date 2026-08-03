@@ -81,6 +81,8 @@ export default function NovaReservaScreen() {
   const [dateISO, setDateISO] = useState(initialDateISO);
   const [hour, setHour] = useState(initialHour);
   const [minute, setMinute] = useState('00');
+  // Trava o scroll da tela enquanto o dedo está na roda de horário.
+  const [wheelActive, setWheelActive] = useState(false);
   const [courtId, setCourtId] = useState<string>(initialCourt);
   const [rules, setRules] = useState<CourtReservationRules | null>(null);
 
@@ -170,7 +172,12 @@ export default function NovaReservaScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <Stack.Screen options={{ title: 'Nova reserva' }} />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={!wheelActive}
+      >
         {/* Quadra */}
         {availableCourts.length > 1 && (
           <View style={styles.section}>
@@ -224,6 +231,7 @@ export default function NovaReservaScreen() {
               setHour(h);
               setMinute(m);
             }}
+            onScrollLock={setWheelActive}
           />
           <Text style={styles.endHint}>
             Termina às {fmtTime(endDate)} · {fmtTime(startDate)} – {fmtTime(endDate)}

@@ -152,6 +152,9 @@ function WheelColumn({ values, selectedIndex, onChange, suffix }: WheelColumnPro
       onScroll={handleScroll}
       onMomentumScrollEnd={settle}
       onScrollEndDrag={settle}
+      // Sem isto o ScrollView da tela engole o arraste vertical no Android e a
+      // roda não gira — a página inteira é que rola.
+      nestedScrollEnabled
       contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * CENTER_OFFSET }}
     >
       {values.map((v, i) => {
@@ -182,14 +185,35 @@ interface WheelTimePickerProps {
   hour: number;
   minute: string;
   onChange: (hour: number, minute: string) => void;
+  /**
+   * Avisa a tela para desligar o scroll dela enquanto o dedo está na roda.
+   *
+   * `nestedScrollEnabled` sozinho não resolve: em ScrollView vertical dentro de
+   * ScrollView vertical o pai continua ganhando o gesto em boa parte dos casos,
+   * e o usuário arrasta a roda mas a página é que rola. Travar o pai durante o
+   * toque é o que garante o comportamento em iOS e Android.
+   */
+  onScrollLock?: (locked: boolean) => void;
 }
 
-export default function WheelTimePicker({ hours, minutes, hour, minute, onChange }: WheelTimePickerProps) {
+export default function WheelTimePicker({
+  hours,
+  minutes,
+  hour,
+  minute,
+  onChange,
+  onScrollLock,
+}: WheelTimePickerProps) {
   const hourIndex = Math.max(0, hours.indexOf(hour));
   const minuteIndex = Math.max(0, minutes.indexOf(minute));
 
   return (
-    <View style={styles.wrapper}>
+    <View
+      style={styles.wrapper}
+      onTouchStart={() => onScrollLock?.(true)}
+      onTouchEnd={() => onScrollLock?.(false)}
+      onTouchCancel={() => onScrollLock?.(false)}
+    >
       {/* Faixa central de seleção */}
       <View style={styles.selectionBand} pointerEvents="none" />
 

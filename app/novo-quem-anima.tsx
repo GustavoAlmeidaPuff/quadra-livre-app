@@ -70,6 +70,8 @@ export default function NovoQuemAnimaScreen() {
   const [timeMode, setTimeMode] = useState<QuemAnimaTimeMode>('fixed');
   const [hour, setHour] = useState(19);
   const [minute, setMinute] = useState('00');
+  // Trava o scroll da tela enquanto o dedo está na roda de horário.
+  const [wheelActive, setWheelActive] = useState(false);
   const [description, setDescription] = useState('');
   const [allowComments, setAllowComments] = useState(true);
   const [showWhatsapp, setShowWhatsapp] = useState(false);
@@ -214,6 +216,7 @@ export default function NovoQuemAnimaScreen() {
         style={styles.container}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={!wheelActive}
       >
         {/* Formato */}
         <View style={styles.section}>
@@ -328,6 +331,7 @@ export default function NovoQuemAnimaScreen() {
                   setHour(h);
                   setMinute(m);
                 }}
+                onScrollLock={setWheelActive}
               />
               <View style={styles.infoBox}>
                 <Ionicons name="lock-closed-outline" size={15} color="#6b7280" />
