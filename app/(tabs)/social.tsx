@@ -35,9 +35,11 @@ import {
   increment,
   where,
 } from 'firebase/firestore';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { getUserStats } from '@/lib/stats';
+import { listOpenPosts, toggleInterest, QuemAnimaPostView } from '@/lib/quemAnima';
 
 type Tab = 'feed' | 'ranking' | 'quem-anima';
 
@@ -67,14 +69,6 @@ interface RankingEntry {
   initials: string;
   pictureUrl?: string | null;
   hours: number;
-}
-
-interface Partner {
-  id: string;
-  name: string;
-  initials: string;
-  pictureUrl?: string | null;
-  count: number;
 }
 
 function getInitials(firstName: string, lastName?: string): string {
@@ -342,47 +336,195 @@ function RankingTab() {
 
 // ---------- Quem Anima Tab ----------
 function QuemAnimaTab({ currentUserId }: { currentUserId: string }) {
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const { appUser } = useAuth();
+  const router = useRouter();
+  const { showError } = useToast();
+  const [posts, setPosts] = useState<QuemAnimaPostView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const stats = await getUserStats(currentUserId);
-        setPartners(
-          stats.topPartners.map((p) => ({
-            id: p.userId,
-            name: p.name,
-            initials: p.initials,
-            pictureUrl: p.pictureUrl,
-            count: p.count,
-          }))
-        );
-      } catch (e) { console.error(e); }
-      finally { setLoading(false); }
-    })();
-  }, [currentUserId]);
+  const courtIds = appUser?.courtIds ?? [];
+
+  const load = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      setPosts(await listOpenPosts(currentUserId, courtIds));
+    } catch (e) {
+      showError(e, 'Não foi possível carregar os posts');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [currentUserId, courtIds.join(',')]);
+
+  // Recarrega ao voltar de criar/abrir um post.
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const quickInterest = async (post: QuemAnimaPostView) => {
+    setBusyId(post.id);
+    try {
+      await toggleInterest(post, currentUserId, appUser?.firstName || 'Alguém');
+      await load();
+    } catch (e) {
+      showError(e);
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (loading) return <ActivityIndicator color="#10b981" style={{ marginTop: 32 }} />;
 
   return (
-    <ScrollView contentContainerStyle={quemStyles.content}>
-      <Text style={quemStyles.hint}>Seus parceiros mais frequentes</Text>
-      {partners.length === 0 ? (
-        <View style={quemStyles.empty}>
-          <Ionicons name="people-outline" size={48} color="#d1d5db" />
-          <Text style={quemStyles.emptyText}>Faça reservas para ver seus parceiros aqui.</Text>
-        </View>
-      ) : (
-        partners.map((p) => (
-          <View key={p.id} style={quemStyles.row}>
-            <Avatar uri={p.pictureUrl} initials={p.initials} size={36} />
-            <Text style={quemStyles.name}>{p.name}</Text>
-            <Text style={quemStyles.count}>{p.count} {p.count === 1 ? 'jogo' : 'jogos'}</Text>
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        contentContainerStyle={quemStyles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); load(); }}
+            tintColor="#10b981"
+          />
+        }
+      >
+        {posts.length === 0 ? (
+          <View style={quemStyles.empty}>
+            <Ionicons name="tennisball-outline" size={52} color="#d1d5db" />
+            <Text style={quemStyles.emptyTitle}>Ninguém procurando jogo ainda</Text>
+            <Text style={quemStyles.emptyText}>
+              Publique um "Quem anima?" e a galera é avisada na hora.
+            </Text>
+            <TouchableOpacity
+              style={quemStyles.emptyBtn}
+              onPress={() => router.push('/novo-quem-anima')}
+            >
+              <Ionicons name="add" size={18} color="#ffffff" />
+              <Text style={quemStyles.emptyBtnText}>Criar o primeiro post</Text>
+            </TouchableOpacity>
           </View>
-        ))
+        ) : (
+          posts.map((post) => (
+            <TouchableOpacity
+              key={post.id}
+              style={[quemStyles.postCard, post.isMine && quemStyles.postCardMine]}
+              onPress={() => router.push({ pathname: '/quem-anima/[id]', params: { id: post.id } })}
+              activeOpacity={0.85}
+            >
+              <View style={quemStyles.postHeader}>
+                <Avatar uri={post.author.pictureUrl} initials={post.author.initials} size={40} fontSize={15} />
+                <View style={{ flex: 1 }}>
+                  <View style={quemStyles.nameRow}>
+                    <Text style={quemStyles.postAuthor}>
+                      {post.isMine ? 'Você' : post.author.name}
+                    </Text>
+                    {post.isMine && (
+                      <View style={quemStyles.mineTag}>
+                        <Text style={quemStyles.mineTagText}>seu post</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={quemStyles.postFormat}>Procurando {post.formatLabel}</Text>
+                </View>
+                <View style={quemStyles.formatBadge}>
+                  <Text style={quemStyles.formatBadgeText}>
+                    {post.format === 'ambos' ? '1x1/2x2' : post.format}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={quemStyles.metaRow}>
+                <Ionicons
+                  name={post.timeMode === 'tbd' ? 'help-circle-outline' : 'time-outline'}
+                  size={15}
+                  color="#059669"
+                />
+                <Text style={quemStyles.metaText}>{post.whenLabel}</Text>
+                <Text style={quemStyles.metaDot}>·</Text>
+                <Text style={quemStyles.metaText}>{post.courtName}</Text>
+              </View>
+
+              {!!post.description && (
+                <Text style={quemStyles.postDescription} numberOfLines={2}>
+                  {post.description}
+                </Text>
+              )}
+
+              <View style={quemStyles.postFooter}>
+                <View style={quemStyles.counters}>
+                  {post.interested.length > 0 && (
+                    <View style={quemStyles.counter}>
+                      <Ionicons name="hand-right-outline" size={14} color="#6b7280" />
+                      <Text style={quemStyles.counterText}>{post.interested.length}</Text>
+                    </View>
+                  )}
+                  {post.confirmed.length > 0 && (
+                    <View style={quemStyles.counter}>
+                      <Ionicons name="people-outline" size={14} color="#6b7280" />
+                      <Text style={quemStyles.counterText}>{post.confirmed.length}</Text>
+                    </View>
+                  )}
+                  {post.allowComments && post.commentCount > 0 && (
+                    <View style={quemStyles.counter}>
+                      <Ionicons name="chatbubble-outline" size={14} color="#6b7280" />
+                      <Text style={quemStyles.counterText}>{post.commentCount}</Text>
+                    </View>
+                  )}
+                  {post.showWhatsapp && (
+                    <Ionicons name="logo-whatsapp" size={15} color="#25D366" />
+                  )}
+                </View>
+
+                {post.isMine ? (
+                  <View style={quemStyles.manageHint}>
+                    <Text style={quemStyles.manageHintText}>Gerenciar</Text>
+                    <Ionicons name="chevron-forward" size={14} color="#059669" />
+                  </View>
+                ) : post.iAmConfirmed ? (
+                  <View style={quemStyles.inGameTag}>
+                    <Ionicons name="checkmark-done" size={14} color="#065f46" />
+                    <Text style={quemStyles.inGameTagText}>No jogo</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      quemStyles.animoBtn,
+                      post.iAmInterested && quemStyles.animoBtnActive,
+                      busyId === post.id && quemStyles.animoBtnBusy,
+                    ]}
+                    onPress={() => quickInterest(post)}
+                    disabled={busyId === post.id}
+                  >
+                    <Ionicons
+                      name={post.iAmInterested ? 'checkmark-circle' : 'hand-right'}
+                      size={15}
+                      color={post.iAmInterested ? '#065f46' : '#ffffff'}
+                    />
+                    <Text
+                      style={[
+                        quemStyles.animoBtnText,
+                        post.iAmInterested && quemStyles.animoBtnTextActive,
+                      ]}
+                    >
+                      {post.iAmInterested ? 'Animou!' : 'Eu animo!'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
+      </ScrollView>
+
+      {posts.length > 0 && (
+        <TouchableOpacity
+          style={quemStyles.fab}
+          onPress={() => router.push('/novo-quem-anima')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="add" size={28} color="#ffffff" />
+        </TouchableOpacity>
       )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -394,7 +536,7 @@ export default function SocialScreen() {
   const tabs: { key: Tab; label: string; icon: any }[] = [
     { key: 'feed', label: 'Feed', icon: 'list-outline' },
     { key: 'ranking', label: 'Ranking', icon: 'trophy-outline' },
-    { key: 'quem-anima', label: 'Quem Anima', icon: 'time-outline' },
+    { key: 'quem-anima', label: 'Quem anima?', icon: 'hand-right-outline' },
   ];
 
   return (
@@ -514,20 +656,116 @@ const rankingStyles = StyleSheet.create({
 });
 
 const quemStyles = StyleSheet.create({
-  content: { padding: 16, gap: 10, paddingBottom: 32 },
-  hint: { fontSize: 13, color: '#6b7280', marginBottom: 4 },
-  empty: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  emptyText: { fontSize: 14, color: '#9ca3af', textAlign: 'center' },
-  row: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
+  content: { padding: 16, gap: 12, paddingBottom: 96 },
+
+  empty: { alignItems: 'center', paddingTop: 70, gap: 10, paddingHorizontal: 24 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#374151', marginTop: 4 },
+  emptyText: { fontSize: 14, color: '#9ca3af', textAlign: 'center', lineHeight: 20 },
+  emptyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 6,
+    backgroundColor: '#10b981',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    marginTop: 10,
+  },
+  emptyBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 14 },
+
+  postCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    gap: 9,
   },
-  name: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111827' },
-  count: { fontSize: 13, color: '#6b7280' },
+  // Post do próprio usuário: verde claro, para ele achar o dele de relance.
+  postCardMine: { backgroundColor: '#f0fdf4', borderColor: '#6ee7b7' },
+
+  postHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  postAuthor: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  mineTag: { backgroundColor: '#a7f3d0', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  mineTagText: { fontSize: 10, fontWeight: '700', color: '#065f46' },
+  postFormat: { fontSize: 12, color: '#6b7280', marginTop: 1 },
+  formatBadge: {
+    backgroundColor: '#ecfdf5',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  formatBadgeText: { fontSize: 11, fontWeight: '800', color: '#059669' },
+
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  metaText: { fontSize: 13, color: '#374151', fontWeight: '500' },
+  metaDot: { fontSize: 13, color: '#d1d5db' },
+
+  postDescription: {
+    fontSize: 13,
+    color: '#4b5563',
+    lineHeight: 18,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+    borderRadius: 8,
+    padding: 9,
+  },
+
+  postFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 1,
+  },
+  counters: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  counter: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  counterText: { fontSize: 12, color: '#6b7280', fontWeight: '600' },
+
+  animoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#10b981',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 13,
+  },
+  animoBtnActive: { backgroundColor: '#d1fae5', borderWidth: 1, borderColor: '#10b981' },
+  animoBtnBusy: { opacity: 0.5 },
+  animoBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
+  animoBtnTextActive: { color: '#065f46' },
+
+  inGameTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#a7f3d0',
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+  },
+  inGameTagText: { fontSize: 12, fontWeight: '700', color: '#065f46' },
+
+  manageHint: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  manageHintText: { fontSize: 13, fontWeight: '700', color: '#059669' },
+
+  fab: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
 });

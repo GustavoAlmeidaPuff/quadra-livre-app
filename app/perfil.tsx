@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { getUserStats, UserStats } from '@/lib/stats';
 import { User } from '@/types';
@@ -26,6 +26,7 @@ function getInitials(firstName?: string, lastName?: string): string {
 export default function PerfilScreen() {
   const { appUser, firebaseUser } = useAuth();
   const { userId } = useLocalSearchParams<{ userId?: string }>();
+  const router = useRouter();
 
   // Se não passou userId, mostra o próprio perfil
   const viewedUserId = userId || firebaseUser?.uid || '';
@@ -217,6 +218,21 @@ export default function PerfilScreen() {
         </View>
       )}
 
+      {/* Configurações (só no próprio perfil) */}
+      {isOwnProfile && (
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => router.push('/configuracoes')}
+        >
+          <Ionicons name="settings-outline" size={20} color="#374151" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.settingsText}>Configurações</Text>
+            <Text style={styles.settingsSub}>Notificações e WhatsApp</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+        </TouchableOpacity>
+      )}
+
       {/* Sign out (só no próprio perfil) */}
       {isOwnProfile && (
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
@@ -301,6 +317,19 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 14, color: '#374151', flex: 1 },
   infoValue: { fontSize: 14, color: '#6b7280', maxWidth: '50%', textAlign: 'right' },
   divider: { height: 1, backgroundColor: '#f3f4f6', marginHorizontal: 14 },
+
+  settingsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  settingsText: { fontSize: 15, fontWeight: '600', color: '#111827' },
+  settingsSub: { fontSize: 12, color: '#9ca3af', marginTop: 1 },
 
   signOutButton: {
     flexDirection: 'row',

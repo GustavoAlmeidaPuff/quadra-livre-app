@@ -18,6 +18,7 @@ import {
   doc,
   limit,
 } from 'firebase/firestore';
+import { useRouter } from 'expo-router';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 
@@ -27,7 +28,17 @@ interface Notification {
   message: string;
   read: boolean;
   createdAt: Date;
+  /** Quando presente, tocar na notificação abre o post do "Quem anima?". */
+  quemAnimaPostId?: string | null;
 }
+
+const ICON_BY_TYPE: Record<string, keyof typeof Ionicons.glyphMap> = {
+  challenge: 'trophy-outline',
+  quem_anima_novo: 'megaphone-outline',
+  quem_anima_interesse: 'hand-right-outline',
+  quem_anima_comentario: 'chatbubble-outline',
+  quem_anima_adicionado: 'checkmark-done',
+};
 
 function timeAgo(date: Date): string {
   const diff = (Date.now() - date.getTime()) / 1000;
@@ -39,6 +50,7 @@ function timeAgo(date: Date): string {
 
 export default function NotificacoesScreen() {
   const { firebaseUser } = useAuth();
+  const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -57,6 +69,7 @@ export default function NotificacoesScreen() {
         message: d.data().message ?? '',
         read: d.data().read === true,
         createdAt: d.data().createdAt?.toDate?.() ?? new Date(),
+        quemAnimaPostId: d.data().quemAnimaPostId ?? null,
       }));
       setNotifications(items);
       // Mark all as read
@@ -84,10 +97,19 @@ export default function NotificacoesScreen() {
         </View>
       ) : (
         notifications.map((n) => (
-          <View key={n.id} style={[styles.card, !n.read && styles.cardUnread]}>
+          <TouchableOpacity
+            key={n.id}
+            style={[styles.card, !n.read && styles.cardUnread]}
+            onPress={() =>
+              n.quemAnimaPostId &&
+              router.push({ pathname: '/quem-anima/[id]', params: { id: n.quemAnimaPostId } })
+            }
+            activeOpacity={n.quemAnimaPostId ? 0.7 : 1}
+            disabled={!n.quemAnimaPostId}
+          >
             <View style={styles.cardLeft}>
               <Ionicons
-                name={n.type === 'challenge' ? 'trophy-outline' : 'notifications-outline'}
+                name={ICON_BY_TYPE[n.type] ?? 'notifications-outline'}
                 size={20}
                 color={n.read ? '#9ca3af' : '#10b981'}
               />
@@ -96,8 +118,11 @@ export default function NotificacoesScreen() {
               <Text style={[styles.cardText, !n.read && styles.cardTextUnread]}>{n.message}</Text>
               <Text style={styles.cardTime}>{timeAgo(n.createdAt)}</Text>
             </View>
+            {n.quemAnimaPostId && (
+              <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+            )}
             {!n.read && <View style={styles.unreadDot} />}
-          </View>
+          </TouchableOpacity>
         ))
       )}
     </ScrollView>

@@ -74,6 +74,9 @@ export default function RootLayout() {
           <Stack.Screen name="notificacoes" options={{ title: 'Notificações', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
           <Stack.Screen name="nova-reserva" options={{ title: 'Nova reserva', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
           <Stack.Screen name="gerenciar-quadra" options={{ title: 'Gerenciar quadra', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
+          <Stack.Screen name="configuracoes" options={{ title: 'Configurações', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
+          <Stack.Screen name="novo-quem-anima" options={{ title: 'Quem anima?', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
+          <Stack.Screen name="quem-anima/[id]" options={{ title: 'Post', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
           <Stack.Screen name="+not-found" />
         </Stack>
       </AuthGuard>

@@ -125,6 +125,9 @@ function CourtsStatusCenter({ courtIds }: { courtIds: string[] }) {
           for (const d of snap.docs) {
             const data = d.data();
             if (normalizeCourtId(data.courtId) !== normId) continue;
+            // Bloco de organização do "Quem anima?" segura o horário, mas
+            // ninguém está jogando ainda — não deixa a quadra "ocupada".
+            if (data.type === 'organizing') continue;
             const start = data.startAt.toMillis();
             const end = data.endAt.toMillis();
             if (nowMs >= start && nowMs < end) {

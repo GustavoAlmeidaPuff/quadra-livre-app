@@ -3,6 +3,7 @@ import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { User } from '@/types';
+import { registerForPushNotifications } from '@/lib/push';
 
 interface AuthContextValue {
   firebaseUser: FirebaseUser | null;
@@ -43,6 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setFirebaseUser(user);
       if (user) {
         await fetchAppUser(user.uid);
+        // Não dá await: pedir permissão de push não pode segurar a navegação.
+        registerForPushNotifications(user.uid);
       } else {
         setAppUser(null);
       }

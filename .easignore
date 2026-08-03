@@ -1,0 +1,55 @@
+# Quando este arquivo existe, o EAS Build o usa NO LUGAR do .gitignore para
+# decidir o que sobe junto com o projeto.
+#
+# Ele existe por um motivo só: o .gitignore exclui o `.env` (correto, o repo é
+# público), mas as variáveis EXPO_PUBLIC_* são lidas na hora do bundle, que
+# acontece no servidor do EAS. Sem o `.env` lá, o APK sai com a config do
+# Firebase indefinida e o app não conecta em nada.
+#
+# O `.env` continua fora do Git — só o EAS passa a enxergá-lo.
+# Por isso o resto do .gitignore precisa estar repetido aqui.
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.p8
+*.p12
+*.mobileprovision
+
+# Credenciais de assinatura: o EAS recebe o keystore pelo canal de credenciais
+# (credentialsSource: "local" em eas.json), nunca dentro do tarball do projeto.
+*.jks
+*.key
+credentials.json
+credentials/
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# env locais (esses seguem fora — só o .env sobe)
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android

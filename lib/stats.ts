@@ -90,6 +90,11 @@ async function getReservationIdsForUser(userId: string): Promise<Set<string>> {
   return ids;
 }
 
+/**
+ * Blocos de organização do "Quem anima?" moram na mesma coleção, mas não são
+ * jogos: se entrassem aqui virariam horas jogadas, parceiros e streak falsos.
+ * Filtramos num ponto só, que é por onde todas as stats passam.
+ */
 async function getReservationsByIds(
   reservationIds: string[]
 ): Promise<Array<{ id: string; startAt: Date; endAt: Date; createdById: string }>> {
@@ -103,6 +108,7 @@ async function getReservationsByIds(
     );
     snap.docs.forEach((d) => {
       const data = d.data();
+      if (data.type === 'organizing') return;
       reservations.push({
         id: d.id,
         startAt: data.startAt?.toDate?.() ?? new Date(),

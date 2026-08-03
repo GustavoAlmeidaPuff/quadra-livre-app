@@ -23,7 +23,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { CourtReservationRules, DurationMode } from '@/types';
+import { CourtReservationRules, DurationMode, ReservationType } from '@/types';
 import { normalizeCourtId } from '@/lib/courts';
 
 const DEFAULT_FIXED_MINUTES = 90;
@@ -37,6 +37,13 @@ export interface CreateReservationInput {
   courtId: string;
   /** IDs dos outros jogadores (o criador é adicionado automaticamente). */
   participantIds: string[];
+  /**
+   * 'organizing' cria o bloco cinza de um post do "Quem anima?": segura o
+   * horário (conflita como qualquer reserva) mas ainda não tem jogadores, então
+   * nenhum reservationParticipant é criado. Vira 'game' no "Fechou!".
+   */
+  type?: ReservationType;
+  quemAnimaPostId?: string;
 }
 
 export interface ReservationValidationError {
@@ -123,6 +130,19 @@ async function validateReservation(
   );
   if (conflictDoc) {
     const conflict = conflictDoc.data();
+    const fmt = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const janela = `das ${fmt(conflict.startAt.toDate())} às ${fmt(conflict.endAt.toDate())}`;
+
+    // Bloco de organização do "Quem anima?": não tem participantes ainda,
+    // então a mensagem fala do organizador.
+    if (conflict.type === 'organizing') {
+      const uSnap = await getDoc(doc(db, 'users', conflict.createdById ?? ''));
+      const organizer = uSnap.exists() ? uSnap.data()?.firstName || 'Alguém' : 'Alguém';
+      return {
+        message: `${organizer} está organizando um jogo ${janela}. Anime no "Quem anima?" ou escolha outro horário.`,
+      };
+    }
+
     const participantsSnap = await getDocs(
       query(
         collection(db, 'reservationParticipants'),
@@ -141,9 +161,8 @@ async function validateReservation(
     }
     const namesText = names.join(' e ');
     const verb = names.length === 1 ? 'vai jogar' : 'vão jogar';
-    const fmt = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     return {
-      message: `${namesText} ${verb} das ${fmt(conflict.startAt.toDate())} às ${fmt(conflict.endAt.toDate())}, tente outro horário.`,
+      message: `${namesText} ${verb} ${janela}, tente outro horário.`,
     };
   }
 
@@ -202,7 +221,8 @@ async function validateReservation(
  * amigável se a validação falhar.
  */
 export async function createReservation(input: CreateReservationInput): Promise<string> {
-  const { createdById, startAt, courtId, participantIds } = input;
+  const { createdById, startAt, courtId, participantIds, quemAnimaPostId } = input;
+  const type: ReservationType = input.type ?? 'game';
   const normalizedCourtId = normalizeCourtId(courtId);
   const rules = await getCourtRules(normalizedCourtId);
   const endAt = input.endAt ?? computeEndAt(startAt, rules);
@@ -218,18 +238,58 @@ export async function createReservation(input: CreateReservationInput): Promise<
     createdById,
     createdAt: Timestamp.now(),
     courtId: normalizedCourtId,
+    type,
+    ...(quemAnimaPostId ? { quemAnimaPostId } : {}),
   });
 
-  // Criador é o primeiro participante (order 0), depois os demais.
-  const creatorPartRef = doc(collection(db, 'reservationParticipants'));
-  batch.set(creatorPartRef, { reservationId: reservationRef.id, userId: createdById, order: 0 });
+  if (type === 'game') {
+    // Criador é o primeiro participante (order 0), depois os demais.
+    const creatorPartRef = doc(collection(db, 'reservationParticipants'));
+    batch.set(creatorPartRef, { reservationId: reservationRef.id, userId: createdById, order: 0 });
 
-  const others = participantIds.filter((id) => id && id !== createdById);
-  others.forEach((userId, i) => {
-    const partRef = doc(collection(db, 'reservationParticipants'));
-    batch.set(partRef, { reservationId: reservationRef.id, userId, order: i + 1 });
-  });
+    const others = participantIds.filter((id) => id && id !== createdById);
+    others.forEach((userId, i) => {
+      const partRef = doc(collection(db, 'reservationParticipants'));
+      batch.set(partRef, { reservationId: reservationRef.id, userId, order: i + 1 });
+    });
+  }
 
   await batch.commit();
   return reservationRef.id;
+}
+
+/**
+ * Converte o bloco de organização na reserva definitiva, no mesmo documento —
+ * assim o horário nunca é liberado entre uma coisa e outra, e ninguém consegue
+ * reservar por cima no meio do caminho.
+ */
+export async function convertOrganizingToGame(
+  reservationId: string,
+  createdById: string,
+  participantIds: string[]
+): Promise<void> {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'reservations', reservationId), { type: 'game' });
+
+  const creatorPartRef = doc(collection(db, 'reservationParticipants'));
+  batch.set(creatorPartRef, { reservationId, userId: createdById, order: 0 });
+
+  const others = [...new Set(participantIds.filter((id) => id && id !== createdById))];
+  others.forEach((userId, i) => {
+    const partRef = doc(collection(db, 'reservationParticipants'));
+    batch.set(partRef, { reservationId, userId, order: i + 1 });
+  });
+
+  await batch.commit();
+}
+
+/** Remove o bloco cinza quando o post é cancelado ou fechado sem hora marcada. */
+export async function deleteReservation(reservationId: string): Promise<void> {
+  const partSnap = await getDocs(
+    query(collection(db, 'reservationParticipants'), where('reservationId', '==', reservationId))
+  );
+  const batch = writeBatch(db);
+  partSnap.docs.forEach((d) => batch.delete(d.ref));
+  batch.delete(doc(db, 'reservations', reservationId));
+  await batch.commit();
 }

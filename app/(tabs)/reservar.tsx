@@ -30,6 +30,7 @@ import ErrorState from '@/components/ErrorState';
 import { getFriendlyError, FriendlyError } from '@/lib/errors';
 import { COURTS, normalizeCourtId } from '@/lib/courts';
 import { canManageCourt } from '@/lib/permissions';
+import { ReservationType } from '@/types';
 
 const ROW_HEIGHT = 60; // px por hora
 const LABEL_WIDTH = 52;
@@ -56,6 +57,9 @@ interface RawReservation {
   end: Date;
   createdById: string;
   courtId: string;
+  /** 'organizing' = bloco cinza segurando o horário para um post do "Quem anima?". */
+  type: ReservationType;
+  quemAnimaPostId?: string | null;
 }
 
 interface AgendaReservation extends RawReservation {
@@ -64,6 +68,8 @@ interface AgendaReservation extends RawReservation {
   isMine: boolean;
   isPast: boolean;
   isCreator: boolean;
+  /** Só preenchido quando type === 'organizing'. */
+  organizerName?: string;
 }
 
 function ReservationDetailModal({
@@ -234,6 +240,8 @@ export default function ReservarScreen() {
           end: data.endAt?.toDate?.() ?? new Date(),
           createdById: data.createdById ?? '',
           courtId: normalizeCourtId(data.courtId),
+          type: (data.type ?? 'game') as ReservationType,
+          quemAnimaPostId: data.quemAnimaPostId ?? null,
         };
       });
       setWindowReservations(raw);
@@ -281,6 +289,22 @@ export default function ReservarScreen() {
     (async () => {
       const items: AgendaReservation[] = [];
       for (const r of overlapping) {
+        // Bloco de organização ainda não tem jogadores — mostra quem está organizando.
+        if (r.type === 'organizing') {
+          const uSnap = await getDoc(doc(db, 'users', r.createdById));
+          const u = uSnap.exists() ? uSnap.data() : null;
+          items.push({
+            ...r,
+            participantNames: [],
+            participantIds: [],
+            organizerName: `${u?.firstName ?? ''} ${u?.lastName ?? ''}`.trim() || 'alguém',
+            isMine: r.createdById === firebaseUser.uid,
+            isCreator: r.createdById === firebaseUser.uid,
+            isPast: r.end < new Date(),
+          });
+          continue;
+        }
+
         const partSnap = await getDocs(
           query(collection(db, 'reservationParticipants'), where('reservationId', '==', r.id))
         );
@@ -471,20 +495,47 @@ export default function ReservarScreen() {
               const endMin = Math.min(24 * 60, (r.end.getTime() - dayStartForBlocks.getTime()) / 60000);
               const top = startMin * (ROW_HEIGHT / 60);
               const height = Math.max(32, (endMin - startMin) * (ROW_HEIGHT / 60));
+              const isOrganizing = r.type === 'organizing';
+
               return (
                 <TouchableOpacity
                   key={r.id}
                   style={[
                     styles.block,
                     { top, height },
-                    r.isMine ? styles.blockMine : styles.blockOther,
+                    isOrganizing
+                      ? styles.blockOrganizing
+                      : r.isMine
+                      ? styles.blockMine
+                      : styles.blockOther,
                   ]}
-                  onPress={() => setSelected(r)}
+                  onPress={() => {
+                    // O bloco cinza não é uma reserva de verdade: leva ao post.
+                    if (isOrganizing) {
+                      if (r.quemAnimaPostId) {
+                        router.push({ pathname: '/quem-anima/[id]', params: { id: r.quemAnimaPostId } });
+                      }
+                      return;
+                    }
+                    setSelected(r);
+                  }}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.blockNames, r.isMine ? styles.blockNamesMine : styles.blockNamesOther]} numberOfLines={1}>
-                    {r.participantNames.join(', ') || '—'}
-                  </Text>
+                  {isOrganizing ? (
+                    <View style={styles.blockOrganizingRow}>
+                      <Ionicons name="hand-right-outline" size={13} color="#4b5563" />
+                      <Text style={styles.blockOrganizingText} numberOfLines={1}>
+                        Reserva sendo organizada por {r.isMine ? 'você' : r.organizerName}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text
+                      style={[styles.blockNames, r.isMine ? styles.blockNamesMine : styles.blockNamesOther]}
+                      numberOfLines={1}
+                    >
+                      {r.participantNames.join(', ') || '—'}
+                    </Text>
+                  )}
                   <Text style={styles.blockTime}>
                     {formatTime(r.start)} – {formatTime(r.end)}
                   </Text>
@@ -634,6 +685,17 @@ const styles = StyleSheet.create({
   },
   blockMine: { backgroundColor: '#d1fae5', borderLeftColor: '#10b981' },
   blockOther: { backgroundColor: '#fef9c3', borderLeftColor: '#eab308' },
+  // Cinza: horário segurado por um post do "Quem anima?", jogo ainda não fechado.
+  blockOrganizing: {
+    backgroundColor: '#f3f4f6',
+    borderLeftColor: '#9ca3af',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#d1d5db',
+    borderLeftWidth: 4,
+  },
+  blockOrganizingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  blockOrganizingText: { fontSize: 12, fontWeight: '600', color: '#4b5563', flex: 1 },
   blockNames: { fontSize: 13, fontWeight: '700' },
   blockNamesMine: { color: '#065f46' },
   blockNamesOther: { color: '#854d0e' },
