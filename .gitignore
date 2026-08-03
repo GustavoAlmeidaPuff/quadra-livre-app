@@ -35,6 +35,10 @@ yarn-error.*
 .env*.local
 .env
 
+# Config do Firebase Android. Fora do Git porque este repo é público, seguindo
+# a mesma decisão do .env. O EAS Build recebe o arquivo pelo .easignore.
+google-services.json
+
 # typescript
 *.tsbuildinfo
 
