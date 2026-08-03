@@ -46,6 +46,12 @@
         "projectId": "6d729e0a-85a7-4a90-8ae7-44de5a8481e6"
       }
     },
-    "owner": "gustavo_tale"
+    "owner": "gustavo_tale",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/6d729e0a-85a7-4a90-8ae7-44de5a8481e6"
+    }
   }
 }
