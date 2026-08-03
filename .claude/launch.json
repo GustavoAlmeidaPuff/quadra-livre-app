@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "web", "--", "--port", "8082"],
       "port": 8082,
       "autoPort": false
+    },
+    {
+      "name": "web-tenis",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "../quadra-tenis-igrejinha", "run", "dev", "--", "--port", "3100"],
+      "port": 3100,
+      "autoPort": false
     }
   ]
 }
