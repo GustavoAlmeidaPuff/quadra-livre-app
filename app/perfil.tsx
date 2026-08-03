@@ -418,31 +418,31 @@ export default function PerfilScreen() {
         </View>
       )}
 
-      {/* Frequência por dia */}
-      {stats && (
+      {/* Próximas reservas — logo após os números */}
+      {isOwnProfile && stats && stats.upcomingReservations.length > 0 && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Frequência por dia</Text>
-          <View style={styles.chart}>
-            {stats.dayStats.map((stat) => {
-              const maxCount = Math.max(...stats.dayStats.map((d) => d.count), 1);
-              return (
-                <View key={stat.day} style={styles.chartBar}>
-                  <View style={styles.barContainer}>
-                    <View
-                      style={[
-                        styles.bar,
-                        {
-                          height: stat.count > 0
-                            ? Math.max(Math.round((stat.count / maxCount) * 80), 4)
-                            : 0,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.barLabel}>{stat.day}</Text>
+          <Text style={styles.cardTitle}>Próximas reservas</Text>
+          <View style={styles.reservationList}>
+            {stats.upcomingReservations.slice(0, 5).map((r) => (
+              <TouchableOpacity
+                key={r.id}
+                style={styles.reservationRow}
+                onPress={() => setSelectedReservation(r)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.dot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reservationDate}>{r.dateLabel}</Text>
+                  <Text style={styles.reservationTime}>{r.time}</Text>
+                  {r.participants.length > 0 && (
+                    <Text style={styles.reservationParticipants} numberOfLines={1}>
+                      {r.participants.join(', ')}
+                    </Text>
+                  )}
                 </View>
-              );
-            })}
+                <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       )}
@@ -494,36 +494,60 @@ export default function PerfilScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Próximas reservas */}
-      {isOwnProfile && stats && stats.upcomingReservations.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Próximas reservas</Text>
-          <View style={styles.reservationList}>
-            {stats.upcomingReservations.slice(0, 5).map((r) => (
-              <TouchableOpacity
-                key={r.id}
-                style={styles.reservationRow}
-                onPress={() => setSelectedReservation(r)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.dot} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.reservationDate}>{r.dateLabel}</Text>
-                  <Text style={styles.reservationTime}>{r.time}</Text>
-                  {r.participants.length > 0 && (
-                    <Text style={styles.reservationParticipants} numberOfLines={1}>
-                      {r.participants.join(', ')}
-                    </Text>
-                  )}
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+      {/* Rafitos e Parceiros (só no próprio perfil) */}
+      {isOwnProfile && (
+        <>
+          <TouchableOpacity style={styles.settingsButton} onPress={() => router.push('/aulas')}>
+            <MaterialCommunityIcons name="tennis" size={20} color="#374151" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingsText}>Evolua no Tênis com Rafitos</Text>
+              <Text style={styles.settingsSub}>Aulas, encordamento e acessórios</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.settingsButton} onPress={() => router.push('/parceiros')}>
+            <Ionicons name="people-outline" size={20} color="#374151" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingsText}>Parceiros do Tênis Regional</Text>
+              <Text style={styles.settingsSub}>Quem apoia as quadras parceiras</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </TouchableOpacity>
+        </>
       )}
 
-      {/* Conta (só no próprio perfil) */}
+      {/* Configurações (só no próprio perfil) */}
+      {isOwnProfile && (
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => router.push('/configuracoes')}
+        >
+          <Ionicons name="settings-outline" size={20} color="#374151" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.settingsText}>Configurações</Text>
+            <Text style={styles.settingsSub}>Notificações e WhatsApp</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+        </TouchableOpacity>
+      )}
+
+      {/* Suporte — última opção, ainda acima das infos da conta */}
+      {isOwnProfile && (
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => Linking.openURL(SUPPORT_WHATSAPP)}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={20} color="#059669" />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.settingsText, styles.supportText]}>Falar com suporte</Text>
+            <Text style={styles.settingsSub}>Tire dúvidas com a gente no WhatsApp</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+        </TouchableOpacity>
+      )}
+
+      {/* Conta (só no próprio perfil) — por último, antes de sair */}
       {isOwnProfile && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Conta</Text>
@@ -551,56 +575,6 @@ export default function PerfilScreen() {
             </View>
           </View>
         </View>
-      )}
-
-      {/* Suporte, Rafitos e Parceiros (só no próprio perfil) */}
-      {isOwnProfile && (
-        <>
-          <TouchableOpacity
-            style={styles.settingsButton}
-            onPress={() => Linking.openURL(SUPPORT_WHATSAPP)}
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#059669" />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingsText, styles.supportText]}>Falar com suporte</Text>
-              <Text style={styles.settingsSub}>Tire dúvidas com a gente no WhatsApp</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.settingsButton} onPress={() => router.push('/aulas')}>
-            <MaterialCommunityIcons name="tennis" size={20} color="#374151" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.settingsText}>Evolua no Tênis com Rafitos</Text>
-              <Text style={styles.settingsSub}>Aulas, encordamento e acessórios</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.settingsButton} onPress={() => router.push('/parceiros')}>
-            <Ionicons name="people-outline" size={20} color="#374151" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.settingsText}>Parceiros do Tênis</Text>
-              <Text style={styles.settingsSub}>Quem apoia as quadras parceiras</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-        </>
-      )}
-
-      {/* Configurações (só no próprio perfil) */}
-      {isOwnProfile && (
-        <TouchableOpacity
-          style={styles.settingsButton}
-          onPress={() => router.push('/configuracoes')}
-        >
-          <Ionicons name="settings-outline" size={20} color="#374151" />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.settingsText}>Configurações</Text>
-            <Text style={styles.settingsSub}>Notificações e WhatsApp</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-        </TouchableOpacity>
       )}
 
       {/* Sign out (só no próprio perfil) */}
@@ -685,12 +659,6 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-
-  chart: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  chartBar: { flex: 1, alignItems: 'center', gap: 4 },
-  barContainer: { height: 80, justifyContent: 'flex-end', width: '80%' },
-  bar: { width: '100%', backgroundColor: '#10b981', borderTopLeftRadius: 3, borderTopRightRadius: 3 },
-  barLabel: { fontSize: 10, color: '#6b7280', fontWeight: '500' },
 
   reservationList: { gap: 12 },
   reservationRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },

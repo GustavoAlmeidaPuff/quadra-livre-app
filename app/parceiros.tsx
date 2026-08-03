@@ -44,7 +44,7 @@ export default function ParceirosScreen() {
             <MaterialCommunityIcons name="handshake-outline" size={24} color="#047857" />
           </View>
           <View style={styles.headerTexts}>
-            <Text style={styles.title}>Parceiros do Tênis</Text>
+            <Text style={styles.title}>Parceiros do Tênis Regional</Text>
             <Text style={styles.subtitle}>
               Empresas e marcas que apoiam o ecossistema do tênis nas quadras parceiras.
             </Text>

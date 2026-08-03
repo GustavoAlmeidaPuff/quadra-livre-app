@@ -73,11 +73,6 @@ export default function ClassificacaoScreen() {
   const viewedUserId = userId || firebaseUser?.uid || '';
   const isOwnProfile = !userId || userId === firebaseUser?.uid;
 
-  const { width } = useWindowDimensions();
-  const contentW = Math.min(width - 40, 420);
-  const centerX = contentW / 2;
-  const swing = Math.min(66, contentW * 0.2);
-
   const [hours, setHours] = useState<number | null>(null);
   const [name, setName] = useState<string>('Jogador');
   const [loading, setLoading] = useState(true);
@@ -132,7 +127,17 @@ export default function ClassificacaoScreen() {
     );
   }
 
-  const totalHours = hours ?? 0;
+  return <ClassificacaoView name={name} hours={hours ?? 0} />;
+}
+
+/** Parte visual, separada da busca de dados para poder ser renderizada isolada. */
+export function ClassificacaoView({ name, hours }: { name: string; hours: number }) {
+  const { width } = useWindowDimensions();
+  const contentW = Math.min(width - 40, 420);
+  const centerX = contentW / 2;
+  const swing = Math.min(66, contentW * 0.2);
+
+  const totalHours = hours;
   const patentes = getTodasPatentesComStatus(totalHours);
   const patenteAtual = getPatenteAtual(totalHours);
   const currentIndex = PATENTES.findIndex((p) => p.id === patenteAtual.id);
@@ -217,6 +222,9 @@ export default function ClassificacaoScreen() {
             index={i}
             left={nodeX(i) - 70}
             top={nodeTop(i)}
+            // O balão fica acima do nó, bem onde o rastro chega: joga ele para o
+            // lado oposto para não cobrir os pontinhos.
+            bubbleShift={i === 0 ? 0 : Math.sign(nodeX(i) - nodeX(i - 1)) * 30}
           />
         ))}
       </View>
@@ -278,11 +286,13 @@ function PatenteNode({
   index,
   left,
   top,
+  bubbleShift,
 }: {
   patente: PatenteInfo;
   index: number;
   left: number;
   top: number;
+  bubbleShift: number;
 }) {
   const colors = colorsFor(patente);
   const enter = useSharedValue(0);
@@ -324,7 +334,7 @@ function PatenteNode({
   }));
 
   const bubbleStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -4 * bubble.value }],
+    transform: [{ translateX: bubbleShift }, { translateY: -4 * bubble.value }],
   }));
 
   const iconName = patente.isAlcancada ? ICON_MAP[patente.icon] ?? 'locate' : 'lock-closed';
