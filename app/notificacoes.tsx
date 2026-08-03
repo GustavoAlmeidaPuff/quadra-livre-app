@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -21,6 +22,7 @@ import {
 import { useRouter } from 'expo-router';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/components/Toast';
 
 interface Notification {
   id: string;
@@ -30,6 +32,19 @@ interface Notification {
   createdAt: Date;
   /** Quando presente, tocar na notificação abre o post do "Quem anima?". */
   quemAnimaPostId?: string | null;
+  /** Quando presente (desafio), mostra o botão "Falar no WhatsApp". */
+  whatsappPhone?: string | null;
+}
+
+async function openChallengeWhatsapp(phone: string, onUnsupported: () => void) {
+  const digits = phone.replace(/\D/g, '');
+  const url = `https://wa.me/${digits}?text=${encodeURIComponent('Oi! Vi que você me desafiou no QuadraLivre. Bora combinar o jogo?')}`;
+  const supported = await Linking.canOpenURL(url);
+  if (!supported) {
+    onUnsupported();
+    return;
+  }
+  Linking.openURL(url);
 }
 
 const ICON_BY_TYPE: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -51,6 +66,7 @@ function timeAgo(date: Date): string {
 export default function NotificacoesScreen() {
   const { firebaseUser } = useAuth();
   const router = useRouter();
+  const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -70,6 +86,7 @@ export default function NotificacoesScreen() {
         read: d.data().read === true,
         createdAt: d.data().createdAt?.toDate?.() ?? new Date(),
         quemAnimaPostId: d.data().quemAnimaPostId ?? null,
+        whatsappPhone: d.data().whatsappPhone ?? null,
       }));
       setNotifications(items);
       // Mark all as read
@@ -96,34 +113,52 @@ export default function NotificacoesScreen() {
           <Text style={styles.emptyText}>Nenhuma notificação.</Text>
         </View>
       ) : (
-        notifications.map((n) => (
-          <TouchableOpacity
-            key={n.id}
-            style={[styles.card, !n.read && styles.cardUnread]}
-            onPress={() =>
-              n.quemAnimaPostId &&
-              router.push({ pathname: '/quem-anima/[id]', params: { id: n.quemAnimaPostId } })
-            }
-            activeOpacity={n.quemAnimaPostId ? 0.7 : 1}
-            disabled={!n.quemAnimaPostId}
-          >
-            <View style={styles.cardLeft}>
-              <Ionicons
-                name={ICON_BY_TYPE[n.type] ?? 'notifications-outline'}
-                size={20}
-                color={n.read ? '#9ca3af' : '#10b981'}
-              />
-            </View>
-            <View style={styles.cardBody}>
-              <Text style={[styles.cardText, !n.read && styles.cardTextUnread]}>{n.message}</Text>
-              <Text style={styles.cardTime}>{timeAgo(n.createdAt)}</Text>
-            </View>
-            {n.quemAnimaPostId && (
-              <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
-            )}
-            {!n.read && <View style={styles.unreadDot} />}
-          </TouchableOpacity>
-        ))
+        notifications.map((n) => {
+          const openWhatsapp = () =>
+            n.whatsappPhone &&
+            openChallengeWhatsapp(n.whatsappPhone, () =>
+              showToast({ variant: 'error', title: 'WhatsApp não encontrado neste aparelho.' })
+            );
+          const isTappable = !!n.quemAnimaPostId || !!n.whatsappPhone;
+
+          return (
+            <TouchableOpacity
+              key={n.id}
+              style={[styles.card, !n.read && styles.cardUnread]}
+              onPress={() => {
+                if (n.quemAnimaPostId) {
+                  router.push({ pathname: '/quem-anima/[id]', params: { id: n.quemAnimaPostId } });
+                } else {
+                  openWhatsapp();
+                }
+              }}
+              activeOpacity={isTappable ? 0.7 : 1}
+              disabled={!isTappable}
+            >
+              <View style={styles.cardLeft}>
+                <Ionicons
+                  name={ICON_BY_TYPE[n.type] ?? 'notifications-outline'}
+                  size={20}
+                  color={n.read ? '#9ca3af' : '#10b981'}
+                />
+              </View>
+              <View style={styles.cardBody}>
+                <Text style={[styles.cardText, !n.read && styles.cardTextUnread]}>{n.message}</Text>
+                <Text style={styles.cardTime}>{timeAgo(n.createdAt)}</Text>
+                {n.whatsappPhone && (
+                  <TouchableOpacity style={styles.whatsappPill} onPress={openWhatsapp}>
+                    <Ionicons name="logo-whatsapp" size={14} color="#ffffff" />
+                    <Text style={styles.whatsappPillText}>Falar no WhatsApp</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {n.quemAnimaPostId && (
+                <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+              )}
+              {!n.read && <View style={styles.unreadDot} />}
+            </TouchableOpacity>
+          );
+        })
       )}
     </ScrollView>
   );
@@ -151,6 +186,18 @@ const styles = StyleSheet.create({
   cardText: { fontSize: 14, color: '#374151', lineHeight: 20 },
   cardTextUnread: { fontWeight: '600', color: '#111827' },
   cardTime: { fontSize: 12, color: '#9ca3af', marginTop: 4 },
+  whatsappPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: '#25D366',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginTop: 8,
+  },
+  whatsappPillText: { color: '#ffffff', fontWeight: '700', fontSize: 12 },
   unreadDot: {
     width: 8,
     height: 8,

@@ -135,6 +135,8 @@ export interface AppNotification {
   /** Alvo do deep link ao tocar na notificação. */
   quemAnimaPostId?: string;
   postId?: string;
+  /** Cópia do WhatsApp de quem desafiou, para o botão "Falar no WhatsApp". */
+  whatsappPhone?: string | null;
 }
 
 export type DurationMode = 'fixed' | 'free' | 'max';

@@ -33,6 +33,8 @@ export interface NotifyInput {
   title?: string;
   fromUserId?: string;
   quemAnimaPostId?: string;
+  /** Cópia do WhatsApp de quem enviou (ex.: desafio), para o link não quebrar se ele mudar. */
+  whatsappPhone?: string | null;
 }
 
 interface Recipient {
@@ -53,7 +55,7 @@ function wantsNotification(user: Recipient, type: NotificationType): boolean {
  * colateral, e falhar aqui não pode desfazer o post/comentário que a gerou.
  */
 export async function notifyUsers(input: NotifyInput): Promise<void> {
-  const { toUserIds, type, message, title, fromUserId, quemAnimaPostId } = input;
+  const { toUserIds, type, message, title, fromUserId, quemAnimaPostId, whatsappPhone } = input;
   const targets = [...new Set(toUserIds.filter(Boolean))];
   if (targets.length === 0) return;
 
@@ -80,6 +82,7 @@ export async function notifyUsers(input: NotifyInput): Promise<void> {
           createdAt: Timestamp.now(),
           ...(fromUserId ? { fromUserId } : {}),
           ...(quemAnimaPostId ? { quemAnimaPostId } : {}),
+          ...(whatsappPhone ? { whatsappPhone } : {}),
         });
       });
       await batch.commit();
