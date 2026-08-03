@@ -21,7 +21,6 @@ import {
   doc,
   addDoc,
   updateDoc,
-  deleteDoc,
   increment,
   arrayUnion,
   arrayRemove,
@@ -427,14 +426,9 @@ export async function cancelPost(post: QuemAnimaPostView): Promise<void> {
   });
 }
 
-export async function deletePost(post: QuemAnimaPostView): Promise<void> {
-  if (post.organizingReservationId) {
-    await deleteReservation(post.organizingReservationId);
-  }
-  const comments = await getDocs(collection(db, POSTS, post.id, 'comments'));
-  await Promise.all(comments.docs.map((c) => deleteDoc(c.ref)));
-  await deleteDoc(doc(db, POSTS, post.id));
-}
+// Não existe "excluir post": a UI usa cancelPost, que já libera o horário e tira
+// o post do mural. Uma exclusão de verdade esbarraria nas regras do Firestore —
+// o autor do post não pode apagar comentários escritos por outras pessoas.
 
 export async function addComment(
   post: QuemAnimaPostView,
