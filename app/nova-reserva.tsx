@@ -149,14 +149,17 @@ export default function NovaReservaScreen() {
     if (!firebaseUser) return;
     setSubmitting(true);
     try {
-      await createReservation({
+      const reservationId = await createReservation({
         createdById: firebaseUser.uid,
         startAt: startDate,
         courtId,
         participantIds: selected.map((s) => s.id),
       });
       showToast({ variant: 'success', title: 'Reserva confirmada!' });
-      router.replace('/(tabs)/reservar');
+      router.replace({
+        pathname: '/(tabs)/reservar',
+        params: { date: dateISO, courtId, reservationId },
+      });
     } catch (e) {
       // createReservation lança Error com mensagem amigável de validação.
       const message = e instanceof Error ? e.message : 'Não foi possível reservar.';

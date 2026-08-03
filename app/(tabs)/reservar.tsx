@@ -22,7 +22,7 @@ import {
   Timestamp,
   orderBy,
 } from 'firebase/firestore';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
@@ -150,6 +150,8 @@ export default function ReservarScreen() {
   const { firebaseUser, appUser } = useAuth();
   const { showError } = useToast();
   const router = useRouter();
+  const params = useLocalSearchParams<{ date?: string; courtId?: string; reservationId?: string }>();
+  const handledReservationId = useRef<string | null>(null);
 
   const availableCourts = useMemo(
     () => COURTS.filter((c) => !appUser?.courtIds?.length || appUser.courtIds.includes(c.id)),
@@ -206,6 +208,20 @@ export default function ReservarScreen() {
       setSelectedCourt(availableCourts[0].id);
     }
   }, [availableCourts, selectedCourt]);
+
+  // Ao voltar de uma nova reserva, pula pro dia/quadra reservados.
+  useEffect(() => {
+    if (params.courtId && availableCourts.some((c) => c.id === params.courtId)) {
+      setSelectedCourt(params.courtId);
+    }
+  }, [params.courtId, availableCourts]);
+
+  useEffect(() => {
+    if (params.date) {
+      const found = days.find((d) => dateKey(d) === params.date);
+      if (found) setSelectedDate(found);
+    }
+  }, [params.date, days]);
 
   // Relógio para a linha vermelha (atualiza a cada minuto).
   useEffect(() => {
@@ -338,6 +354,17 @@ export default function ReservarScreen() {
 
     return () => { cancelled = true; };
   }, [selectedDate, selectedCourt, windowReservations, firebaseUser]);
+
+  // Abre o modal de detalhes da reserva recém-criada assim que ela aparece na agenda.
+  useEffect(() => {
+    if (params.reservationId && params.reservationId !== handledReservationId.current) {
+      const found = dayReservations.find((r) => r.id === params.reservationId);
+      if (found) {
+        setSelected(found);
+        handledReservationId.current = params.reservationId;
+      }
+    }
+  }, [params.reservationId, dayReservations]);
 
   // Scroll inicial até perto do horário atual.
   useEffect(() => {

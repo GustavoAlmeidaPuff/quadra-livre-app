@@ -38,7 +38,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { getUserStats } from '@/lib/stats';
+import { getUserTotalHours } from '@/lib/stats';
 import { listOpenPosts, toggleInterest, QuemAnimaPostView } from '@/lib/quemAnima';
 
 type Tab = 'feed' | 'ranking' | 'quem-anima';
@@ -299,19 +299,18 @@ function RankingTab() {
     (async () => {
       try {
         const snap = await getDocs(query(collection(db, 'users'), limit(50)));
-        const entries: RankingEntry[] = [];
-        for (const d of snap.docs) {
+        const users = snap.docs.filter((d) => !d.data()?.isAnonymous);
+        const hoursList = await Promise.all(users.map((d) => getUserTotalHours(d.id)));
+        const entries: RankingEntry[] = users.map((d, i) => {
           const u = d.data();
-          if (u?.isAnonymous) continue;
-          const stats = await getUserStats(d.id);
-          entries.push({
+          return {
             id: d.id,
             name: `${u?.firstName ?? ''} ${u?.lastName ?? ''}`.trim() || 'Jogador',
             initials: getInitials(u?.firstName, u?.lastName),
             pictureUrl: u?.pictureUrl,
-            hours: stats.totalHours,
-          });
-        }
+            hours: hoursList[i],
+          };
+        });
         setRanking(entries.sort((a, b) => b.hours - a.hours));
       } catch (e) { console.error(e); }
       finally { setLoading(false); }

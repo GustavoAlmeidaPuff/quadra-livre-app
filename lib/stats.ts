@@ -277,6 +277,19 @@ export async function getSuggestedPartners(userId: string, limit = 6): Promise<P
   return partners;
 }
 
+/**
+ * Só as horas totais, sem parceiros/streak/participantes — usada no ranking,
+ * onde getUserStats (pesado, com N+1 de nomes de participantes) foi trocado
+ * por isto rodando em paralelo para todos os usuários.
+ */
+export async function getUserTotalHours(userId: string): Promise<number> {
+  const reservationIds = await getReservationIdsForUser(userId);
+  const allReservations = await getReservationsByIds(Array.from(reservationIds));
+  const now = new Date();
+  const pastCount = allReservations.filter((r) => r.endAt <= now).length;
+  return Math.round(pastCount * RESERVATION_DURATION_HOURS * 10) / 10;
+}
+
 export async function getUserStats(userId: string): Promise<UserStats> {
   const reservationIds = await getReservationIdsForUser(userId);
   const allReservations = await getReservationsByIds(Array.from(reservationIds));
