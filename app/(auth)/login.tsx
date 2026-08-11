@@ -224,6 +224,8 @@ export default function LoginScreen() {
             value={password}
             onChangeText={(v) => { setPassword(v); setError(''); }}
             secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
             autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             editable={!loading}
           />

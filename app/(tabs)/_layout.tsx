@@ -10,7 +10,7 @@ export default function TabLayout() {
         header: () => <AppHeader />,
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home' }} />
+      <Tabs.Screen name="index" options={{ title: 'Início' }} />
       <Tabs.Screen name="reservar" options={{ title: 'Reservar' }} />
       <Tabs.Screen name="social" options={{ title: 'Social' }} />
     </Tabs>

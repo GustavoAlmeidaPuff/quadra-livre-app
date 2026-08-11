@@ -150,7 +150,7 @@ export default function ReservarScreen() {
   const { firebaseUser, appUser } = useAuth();
   const { showError } = useToast();
   const router = useRouter();
-  const params = useLocalSearchParams<{ date?: string; courtId?: string; reservationId?: string }>();
+  const params = useLocalSearchParams<{ date?: string; courtId?: string; reservationId?: string; ts?: string }>();
   const handledReservationId = useRef<string | null>(null);
 
   const availableCourts = useMemo(
@@ -209,12 +209,14 @@ export default function ReservarScreen() {
     }
   }, [availableCourts, selectedCourt]);
 
-  // Ao voltar de uma nova reserva, pula pro dia/quadra reservados.
+  // Ao voltar de uma nova reserva — ou ao tocar no status de quadra no header —
+  // pula pro dia/quadra pedidos. O `ts` faz o efeito rodar de novo mesmo quando a
+  // quadra pedida é a mesma da navegação anterior.
   useEffect(() => {
     if (params.courtId && availableCourts.some((c) => c.id === params.courtId)) {
       setSelectedCourt(params.courtId);
     }
-  }, [params.courtId, availableCourts]);
+  }, [params.courtId, params.ts, availableCourts]);
 
   useEffect(() => {
     if (params.date) {

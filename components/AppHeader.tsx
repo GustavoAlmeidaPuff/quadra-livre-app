@@ -87,6 +87,7 @@ function CourtStatusDot({ isOccupied }: { isOccupied: boolean }) {
 }
 
 function CourtsStatusCenter({ courtIds }: { courtIds: string[] }) {
+  const router = useRouter();
   const [courts, setCourts] = useState<CourtInfo[]>(
     COURTS.filter((c) => courtIds.includes(c.id)).map((c) => ({
       courtId: c.id,
@@ -96,6 +97,16 @@ function CourtsStatusCenter({ courtIds }: { courtIds: string[] }) {
     }))
   );
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Abre a agenda já na quadra tocada. O `ts` força o efeito da tela de reserva
+  // a rodar de novo mesmo quando a quadra é a mesma da navegação anterior.
+  const openCourtAgenda = (courtId: string) => {
+    setDropdownOpen(false);
+    router.push({
+      pathname: '/(tabs)/reservar',
+      params: { courtId, ts: String(Date.now()) },
+    });
+  };
 
   useEffect(() => {
     if (courtIds.length === 0) return;
@@ -178,8 +189,10 @@ function CourtsStatusCenter({ courtIds }: { courtIds: string[] }) {
     <>
       <TouchableOpacity
         style={styles.courtStatus}
-        onPress={() => courts.length > 1 && setDropdownOpen(true)}
-        activeOpacity={courts.length > 1 ? 0.7 : 1}
+        onPress={() =>
+          courts.length > 1 ? setDropdownOpen(true) : openCourtAgenda(courts[0].courtId)
+        }
+        activeOpacity={0.7}
       >
         <CourtStatusDot isOccupied={occupied} />
         <View>
@@ -190,9 +203,11 @@ function CourtsStatusCenter({ courtIds }: { courtIds: string[] }) {
             {subtext}
           </Text>
         </View>
-        {courts.length > 1 && (
-          <Ionicons name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#9ca3af" />
-        )}
+        <Ionicons
+          name={courts.length > 1 ? (dropdownOpen ? 'chevron-up' : 'chevron-down') : 'chevron-forward'}
+          size={14}
+          color="#9ca3af"
+        />
       </TouchableOpacity>
 
       {/* Dropdown */}
@@ -200,9 +215,14 @@ function CourtsStatusCenter({ courtIds }: { courtIds: string[] }) {
         <Pressable style={styles.modalOverlay} onPress={() => setDropdownOpen(false)}>
           <View style={styles.dropdown}>
             {courts.map((c) => (
-              <View key={c.courtId} style={styles.courtRow}>
+              <TouchableOpacity
+                key={c.courtId}
+                style={styles.courtRow}
+                onPress={() => openCourtAgenda(c.courtId)}
+                activeOpacity={0.7}
+              >
                 <CourtStatusDot isOccupied={c.isOccupied} />
-                <View>
+                <View style={styles.courtRowText}>
                   <Text style={[styles.courtRowTitle, { color: c.isOccupied ? '#dc2626' : '#10b981' }]}>
                     {c.isOccupied ? `${c.name} ocupada` : `${c.name} livre`}
                   </Text>
@@ -214,7 +234,8 @@ function CourtsStatusCenter({ courtIds }: { courtIds: string[] }) {
                       : 'Reserve agora!'}
                   </Text>
                 </View>
-              </View>
+                <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+              </TouchableOpacity>
             ))}
           </View>
         </Pressable>
@@ -367,6 +388,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 4,
   },
+  courtRowText: { flex: 1 },
   courtRowTitle: {
     fontSize: 14,
     fontWeight: '600',

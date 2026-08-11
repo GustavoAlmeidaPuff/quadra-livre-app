@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TAB_CONFIG = [
-  { name: 'index', label: 'Home', icon: 'home-outline' as const, iconActive: 'home' as const },
+  { name: 'index', label: 'Início', icon: 'home-outline' as const, iconActive: 'home' as const },
   { name: 'reservar', label: 'Reservar', icon: 'calendar-outline' as const, iconActive: 'calendar' as const, featured: true },
   { name: 'social', label: 'Social', icon: 'people-outline' as const, iconActive: 'people' as const },
 ];

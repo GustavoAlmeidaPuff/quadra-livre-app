@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   StyleSheet,
   TouchableOpacity,
-  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -23,6 +22,7 @@ import { useRouter } from 'expo-router';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
+import { openWhatsapp } from '@/lib/whatsapp';
 
 interface Notification {
   id: string;
@@ -39,12 +39,7 @@ interface Notification {
 async function openChallengeWhatsapp(phone: string, onUnsupported: () => void) {
   const digits = phone.replace(/\D/g, '');
   const url = `https://wa.me/${digits}?text=${encodeURIComponent('Oi! Vi que você me desafiou no QuadraLivre. Bora combinar o jogo?')}`;
-  const supported = await Linking.canOpenURL(url);
-  if (!supported) {
-    onUnsupported();
-    return;
-  }
-  Linking.openURL(url);
+  await openWhatsapp(url, onUnsupported);
 }
 
 const ICON_BY_TYPE: Record<string, keyof typeof Ionicons.glyphMap> = {

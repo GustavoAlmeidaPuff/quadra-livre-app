@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
-  Linking,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -32,6 +31,7 @@ import {
   QuemAnimaCommentView,
   PostUser,
 } from '@/lib/quemAnima';
+import { openWhatsapp } from '@/lib/whatsapp';
 
 function timeAgo(date: Date): string {
   const s = (Date.now() - date.getTime()) / 1000;
@@ -214,15 +214,12 @@ export default function QuemAnimaPostScreen() {
     }
   };
 
-  const openWhatsapp = async () => {
+  const handleOpenWhatsapp = async () => {
     if (!post?.whatsappPhone) return;
     const url = whatsappLink(post.whatsappPhone, post);
-    const supported = await Linking.canOpenURL(url);
-    if (!supported) {
-      showToast({ variant: 'error', title: 'WhatsApp não encontrado neste aparelho.' });
-      return;
-    }
-    Linking.openURL(url);
+    await openWhatsapp(url, () =>
+      showToast({ variant: 'error', title: 'WhatsApp não encontrado neste aparelho.' })
+    );
   };
 
   if (loading) {
@@ -299,7 +296,7 @@ export default function QuemAnimaPostScreen() {
           {!!post.description && <Text style={styles.description}>{post.description}</Text>}
 
           {post.showWhatsapp && !!post.whatsappPhone && !post.isMine && (
-            <TouchableOpacity style={styles.whatsappBtn} onPress={openWhatsapp} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.whatsappBtn} onPress={handleOpenWhatsapp} activeOpacity={0.85}>
               <Ionicons name="logo-whatsapp" size={20} color="#ffffff" />
               <Text style={styles.whatsappBtnText}>Combinar no WhatsApp</Text>
             </TouchableOpacity>
