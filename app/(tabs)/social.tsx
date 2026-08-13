@@ -533,7 +533,7 @@ function RankingTab() {
   useEffect(() => {
     (async () => {
       try {
-        setRanking(await getHoursRanking());
+        setRanking((await getHoursRanking()).entries);
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
     })();

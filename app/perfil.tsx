@@ -247,11 +247,11 @@ export default function PerfilScreen() {
     let cancelled = false;
     setRankingLoading(true);
     getHoursRanking()
-      .then((ranking) => {
+      .then(({ entries }) => {
         if (cancelled) return;
-        const index = ranking.findIndex((entry) => entry.id === viewedUserId);
+        const index = entries.findIndex((entry) => entry.id === viewedUserId);
         setRankingPosition(index >= 0 ? index + 1 : null);
-        setRankingTotal(ranking.length);
+        setRankingTotal(entries.length);
       })
       .catch((error) => {
         console.error(error);
