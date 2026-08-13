@@ -127,11 +127,19 @@ export default function ClassificacaoScreen() {
     );
   }
 
-  return <ClassificacaoView name={name} hours={hours ?? 0} />;
+  return <ClassificacaoView name={name} hours={hours ?? 0} isOwnProfile={isOwnProfile} />;
 }
 
 /** Parte visual, separada da busca de dados para poder ser renderizada isolada. */
-export function ClassificacaoView({ name, hours }: { name: string; hours: number }) {
+export function ClassificacaoView({
+  name,
+  hours,
+  isOwnProfile = true,
+}: {
+  name: string;
+  hours: number;
+  isOwnProfile?: boolean;
+}) {
   const { width } = useWindowDimensions();
   const contentW = Math.min(width - 40, 420);
   const centerX = contentW / 2;
@@ -184,7 +192,7 @@ export function ClassificacaoView({ name, hours }: { name: string; hours: number
       </View>
 
       {/* Trilha */}
-      <Text style={styles.sectionTitle}>Sua jornada</Text>
+      <Text style={styles.sectionTitle}>Jornada de classificação</Text>
 
       <View style={[styles.path, { width: contentW, height: pathHeight }]}>
         {/* Rastro pontilhado entre os nós */}
@@ -222,6 +230,7 @@ export function ClassificacaoView({ name, hours }: { name: string; hours: number
             index={i}
             left={nodeX(i) - 70}
             top={nodeTop(i)}
+            currentLabel={isOwnProfile ? 'VOCÊ ESTÁ AQUI' : 'PATENTE ATUAL'}
             // O balão fica acima do nó, bem onde o rastro chega: joga ele para o
             // lado oposto para não cobrir os pontinhos.
             bubbleShift={i === 0 ? 0 : Math.sign(nodeX(i) - nodeX(i - 1)) * 30}
@@ -287,12 +296,14 @@ function PatenteNode({
   left,
   top,
   bubbleShift,
+  currentLabel,
 }: {
   patente: PatenteInfo;
   index: number;
   left: number;
   top: number;
   bubbleShift: number;
+  currentLabel: string;
 }) {
   const colors = colorsFor(patente);
   const enter = useSharedValue(0);
@@ -343,7 +354,7 @@ function PatenteNode({
     <Animated.View style={[styles.nodeWrap, { left, top }, enterStyle]}>
       {patente.isAtual && (
         <Animated.View style={[styles.bubble, { borderColor: colors.base }, bubbleStyle]}>
-          <Text style={[styles.bubbleText, { color: colors.dark }]}>VOCÊ ESTÁ AQUI</Text>
+          <Text style={[styles.bubbleText, { color: colors.dark }]}>{currentLabel}</Text>
           <View style={[styles.bubbleTail, { borderColor: colors.base }]} />
         </Animated.View>
       )}

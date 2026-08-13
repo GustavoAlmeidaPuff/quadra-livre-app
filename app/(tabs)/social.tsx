@@ -39,7 +39,8 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { getUserTotalHours, getSuggestedPartners } from '@/lib/stats';
+import { getSuggestedPartners } from '@/lib/stats';
+import { getHoursRanking, HoursRankingEntry } from '@/lib/ranking';
 import { listOpenPosts, toggleInterest, QuemAnimaPostView } from '@/lib/quemAnima';
 
 type Tab = 'feed' | 'ranking' | 'quem-anima';
@@ -77,15 +78,6 @@ interface CommentItem {
   authorId: string;
   author: PostAuthor;
   content: string;
-  createdAt: Date;
-}
-
-interface RankingEntry {
-  id: string;
-  name: string;
-  initials: string;
-  pictureUrl?: string | null;
-  hours: number;
   createdAt: Date;
 }
 
@@ -535,28 +527,13 @@ function FeedTab({ currentUserId }: { currentUserId: string }) {
 // ---------- Ranking Tab ----------
 function RankingTab() {
   const router = useRouter();
-  const [ranking, setRanking] = useState<RankingEntry[]>([]);
+  const [ranking, setRanking] = useState<HoursRankingEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const snap = await getDocs(collection(db, 'users'));
-        const users = snap.docs.filter((d) => !d.data()?.isAnonymous);
-        const hoursList = await Promise.all(users.map((d) => getUserTotalHours(d.id)));
-        const entries: RankingEntry[] = users.map((d, i) => {
-          const u = d.data();
-          return {
-            id: d.id,
-            name: `${u?.firstName ?? ''} ${u?.lastName ?? ''}`.trim() || 'Jogador',
-            initials: getInitials(u?.firstName, u?.lastName),
-            pictureUrl: u?.pictureUrl,
-            hours: hoursList[i],
-            createdAt: u?.createdAt?.toDate?.() ?? new Date(0),
-          };
-        });
-        entries.sort((a, b) => (b.hours !== a.hours ? b.hours - a.hours : a.createdAt.getTime() - b.createdAt.getTime()));
-        setRanking(entries);
+        setRanking(await getHoursRanking());
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
     })();

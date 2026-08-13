@@ -26,6 +26,8 @@ import { getCourtName } from '@/lib/courts';
 import { User } from '@/types';
 import PhotoViewer from '@/components/PhotoViewer';
 import Avatar from '@/components/Avatar';
+import PublicProfileHighlights from '@/components/PublicProfileHighlights';
+import { getHoursRanking } from '@/lib/ranking';
 
 function DesafioModal({
   visible,
@@ -201,6 +203,9 @@ export default function PerfilScreen() {
   const [actionBusy, setActionBusy] = useState(false);
   const [desafioVisible, setDesafioVisible] = useState(false);
   const [desafioSending, setDesafioSending] = useState(false);
+  const [rankingPosition, setRankingPosition] = useState<number | null>(null);
+  const [rankingTotal, setRankingTotal] = useState(0);
+  const [rankingLoading, setRankingLoading] = useState(!isOwnProfile);
 
   const loadProfile = useCallback(async () => {
     if (!viewedUserId) return;
@@ -230,6 +235,39 @@ export default function PerfilScreen() {
     setLoading(true);
     loadProfile();
   }, [viewedUserId, isOwnProfile, appUser]);
+
+  useEffect(() => {
+    if (isOwnProfile || !viewedUserId) {
+      setRankingPosition(null);
+      setRankingTotal(0);
+      setRankingLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setRankingLoading(true);
+    getHoursRanking()
+      .then((ranking) => {
+        if (cancelled) return;
+        const index = ranking.findIndex((entry) => entry.id === viewedUserId);
+        setRankingPosition(index >= 0 ? index + 1 : null);
+        setRankingTotal(ranking.length);
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!cancelled) {
+          setRankingPosition(null);
+          setRankingTotal(0);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRankingLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwnProfile, viewedUserId]);
 
   const handleCancelReservation = (reservationId: string) => {
     if (!firebaseUser) return;
@@ -416,6 +454,21 @@ export default function PerfilScreen() {
             <Text style={styles.statLabel}>Semanas</Text>
           </View>
         </View>
+      )}
+
+      {!isOwnProfile && stats && (
+        <PublicProfileHighlights
+          stats={stats}
+          rankingPosition={rankingPosition}
+          rankingTotal={rankingTotal}
+          rankingLoading={rankingLoading}
+          onOpenClassification={() =>
+            router.push({ pathname: '/classificacao', params: { userId: viewedUserId } })
+          }
+          onOpenProfile={(partnerId) =>
+            router.push({ pathname: '/perfil', params: { userId: partnerId } })
+          }
+        />
       )}
 
       {/* Próximas reservas — logo após os números */}
