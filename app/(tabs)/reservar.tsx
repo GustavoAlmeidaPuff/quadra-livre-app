@@ -30,10 +30,12 @@ import ErrorState from '@/components/ErrorState';
 import { getFriendlyError, FriendlyError } from '@/lib/errors';
 import { COURTS, normalizeCourtId } from '@/lib/courts';
 import { canManageCourt } from '@/lib/permissions';
+import { useWeather, hourKey } from '@/lib/weather';
+import WeatherBadge from '@/components/WeatherBadge';
 import { ReservationType } from '@/types';
 
 const ROW_HEIGHT = 60; // px por hora
-const LABEL_WIDTH = 52;
+const LABEL_WIDTH = 64;
 
 function formatTime(d: Date) {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -183,6 +185,9 @@ export default function ReservarScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const didScrollToNow = useRef(false);
 
+  // Previsão do tempo da quadra selecionada (cache de 1h, falha em silêncio).
+  const { hours: weather, refresh: refreshWeather } = useWeather(selectedCourt);
+
   // managerIds de cada quadra visível — usado só pra decidir se mostra a engrenagem.
   const [courtManagerIds, setCourtManagerIds] = useState<Record<string, string[]>>({});
   useEffect(() => {
@@ -275,7 +280,7 @@ export default function ReservarScreen() {
   }, [firebaseUser, days]);
 
   useEffect(() => { setLoading(true); loadWindow(); }, [loadWindow]);
-  const onRefresh = () => { setRefreshing(true); loadWindow(); };
+  const onRefresh = () => { setRefreshing(true); loadWindow(); refreshWeather(); };
 
   // Dias (por quadra) que têm reservas — para o pontinho no seletor.
   const daysWithReservations = useMemo(() => {
@@ -513,7 +518,10 @@ export default function ReservarScreen() {
             {/* Grade de horas */}
             {Array.from({ length: 24 }, (_, h) => (
               <View key={h} style={styles.hourRow}>
-                <Text style={styles.hourLabel}>{String(h).padStart(2, '0')}:00</Text>
+                <View style={styles.hourLabelCol}>
+                  <Text style={styles.hourLabel}>{String(h).padStart(2, '0')}:00</Text>
+                  <WeatherBadge hour={weather[hourKey(selectedDate, h)]} />
+                </View>
                 <View style={styles.hourLine} />
               </View>
             ))}
@@ -692,13 +700,13 @@ const styles = StyleSheet.create({
 
   timelineScroll: { flex: 1 },
   hourRow: { height: ROW_HEIGHT, flexDirection: 'row' },
-  hourLabel: {
+  hourLabelCol: {
     width: LABEL_WIDTH,
-    fontSize: 12,
-    color: '#9ca3af',
     paddingTop: 2,
-    paddingLeft: 12,
+    paddingLeft: 8,
+    gap: 2,
   },
+  hourLabel: { fontSize: 12, color: '#9ca3af' },
   hourLine: { flex: 1, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
 
   block: {

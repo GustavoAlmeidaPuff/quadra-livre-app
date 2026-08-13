@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
@@ -203,6 +204,14 @@ export default function ConfiguracoesScreen() {
             chegam sempre.
           </Text>
         </View>
+
+        {/* Atribuição exigida pela licença CC BY 4.0 da Open-Meteo. */}
+        <TouchableOpacity
+          onPress={() => WebBrowser.openBrowserAsync('https://open-meteo.com/')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.credit}>Dados meteorológicos por Open-Meteo.com</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -261,4 +270,5 @@ const styles = StyleSheet.create({
   toggleDescription: { fontSize: 12, color: '#6b7280', lineHeight: 17, marginTop: 2 },
   divider: { height: 1, backgroundColor: '#f3f4f6' },
   footNote: { fontSize: 12, color: '#9ca3af', lineHeight: 17, paddingHorizontal: 4 },
+  credit: { fontSize: 11, color: '#9ca3af', textAlign: 'center', textDecorationLine: 'underline' },
 });

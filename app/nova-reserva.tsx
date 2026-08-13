@@ -21,6 +21,8 @@ import WheelTimePicker from '@/components/WheelTimePicker';
 import { COURTS } from '@/lib/courts';
 import { getSuggestedPartners, PartnerStat } from '@/lib/stats';
 import { createReservation, getCourtRules, computeEndAt } from '@/lib/reservations';
+import { useWeather, summarizeRange, mapWeatherCode } from '@/lib/weather';
+import WeatherBadge from '@/components/WeatherBadge';
 import { CourtReservationRules } from '@/types';
 
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6h – 23h
@@ -133,6 +135,13 @@ export default function NovaReservaScreen() {
   }, [dateISO, hour, minute]);
   const endDate = useMemo(() => computeEndAt(startDate, rules), [startDate, rules]);
 
+  // Tempo previsto para o intervalo da reserva — pode ser null fora dos 7 dias ou sem rede.
+  const { hours: weather } = useWeather(courtId);
+  const forecast = useMemo(
+    () => summarizeRange(weather, startDate, endDate),
+    [weather, startDate, endDate]
+  );
+
   const isSelected = (id: string) => selected.some((s) => s.id === id);
   const toggle = (u: PickableUser) => {
     setSelected((prev) => (prev.some((s) => s.id === u.id) ? prev.filter((s) => s.id !== u.id) : [...prev, u]));
@@ -239,6 +248,15 @@ export default function NovaReservaScreen() {
           <Text style={styles.endHint}>
             Termina às {fmtTime(endDate)} · {fmtTime(startDate)} – {fmtTime(endDate)}
           </Text>
+          {forecast && (
+            <View style={styles.forecastRow}>
+              <WeatherBadge hour={forecast} iconSize={16} showChance={false} />
+              <Text style={[styles.forecastText, forecast.rainChance >= 50 && styles.forecastTextAlert]}>
+                {mapWeatherCode(forecast.code, forecast.isDay).label} · {forecast.rainChance}% de
+                chance de chuva · {forecast.tempC}°
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Participantes sugeridos */}
@@ -370,6 +388,9 @@ const styles = StyleSheet.create({
   dayChipWeekday: { fontSize: 12, fontWeight: '600', color: '#6b7280' },
   dayChipNumber: { fontSize: 18, fontWeight: '700', color: '#111827' },
   endHint: { fontSize: 13, color: '#6b7280', marginTop: 6 },
+  forecastRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  forecastText: { fontSize: 13, color: '#6b7280', flexShrink: 1 },
+  forecastTextAlert: { color: '#d97706', fontWeight: '600' },
   suggestHint: { fontSize: 12, color: '#9ca3af', marginBottom: 2 },
   partnerRow: {
     flexDirection: 'row',
