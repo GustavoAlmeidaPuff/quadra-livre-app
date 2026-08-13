@@ -36,6 +36,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       if (segments[1] !== 'onboarding') {
         router.replace('/(auth)/onboarding');
       }
+    } else if (!appUser?.courtIds?.length) {
+      // Com perfil mas sem quadra escolhida → seleção de quadra.
+      // Mesmo desvio que o app web faz em src/app/(app)/layout.tsx.
+      if (segments[1] !== 'selecionar-quadra') {
+        router.replace('/(auth)/selecionar-quadra');
+      }
     } else {
       // Autenticado com perfil → app
       if (inAuthGroup) {
@@ -68,7 +74,12 @@ export default function RootLayout() {
       <ToastProvider>
       <AuthGuard>
         <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          {/* Fade na entrada: fecha a transição vinda da seleção de quadra,
+              que sai desaparecendo com a mesma duração. */}
+          <Stack.Screen
+            name="(tabs)"
+            options={{ headerShown: false, animation: 'fade', animationDuration: 420 }}
+          />
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen name="perfil" options={({ route }) => ({ title: (route.params as any)?.userId ? 'Perfil' : 'Meu Perfil', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } })} />
           <Stack.Screen name="estatisticas" options={{ title: 'Estatísticas de jogo', headerBackTitle: 'Voltar', headerTintColor: '#10b981', headerTitleStyle: { color: '#111827', fontWeight: '700' } }} />
