@@ -8,7 +8,7 @@ description: Use this whenever working in the quadra-livre-app repo (the Expo/Re
 ## The situation
 
 `quadra-livre-app` (this repo) and `quadra-tenis-igrejinha` (the original web app, at
-`C:\Users\gualm\Documents\code\quadra-tenis-igrejinha`) are **two clients for one product**.
+`C:\Users\gualm\OneDrive\Documentos\code\quadra-tenis-igrejinha`) are **two clients for one product**.
 About 150 tennis players at a real tennis facility (currently 2 courts, built to scale to
 more) use them to book court time slots and post/comment in a social feed. Both clients read
 and write the **same Firebase project** — same Firestore collections, same security rules,
@@ -41,7 +41,7 @@ other repo and find nothing to do than to silently let the platforms drift.
 
 1. Do the requested work in this repo as normal.
 2. Before considering the task done, check whether it falls into "mirror it" above.
-3. If it does, open `C:\Users\gualm\Documents\code\quadra-tenis-igrejinha` and find the
+3. If it does, open `C:\Users\gualm\OneDrive\Documentos\code\quadra-tenis-igrejinha` and find the
    equivalent surface (see the map below to jump straight to the right files instead of
    re-exploring from scratch).
 4. Implement the equivalent change there, translated to that stack — same behavior and
